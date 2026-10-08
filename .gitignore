@@ -1,0 +1,16 @@
+# Generated
+2222
+zones/
+traces/
+parts/*.bin
+parts/*.cov
+parts/*.dis
+parts/*.new
+parts/*.b6
+parts/*.lst
+jobs/*.b6
+jobs/dir/*.b6
+notes/__pycache__/
+snap/
+phase/
+parts/*.adr

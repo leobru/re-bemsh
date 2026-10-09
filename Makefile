@@ -44,7 +44,7 @@ be:
 
 # Обратная сборка каждой части и побайтное сравнение
 check:
-	@for p in $(PARTS); do tools/reasm.pl parts/$$p.be 2>&1 | tail -1; done
+	@tools/reasm.pl $(addprefix parts/,$(addsuffix .be,$(PARTS)))
 
 clean:
 	rm -f 2222 parts/*.new parts/*.b6 parts/*.lst

@@ -14,3 +14,7 @@ notes/__pycache__/
 snap/
 phase/
 parts/*.adr
+parts/*.obj
+macros.lib
+macros.asm.b6
+macros.be.lst

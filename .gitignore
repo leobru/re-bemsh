@@ -18,3 +18,4 @@ parts/*.obj
 macros.lib
 macros.asm.b6
 macros.be.lst
+parts/*.sym

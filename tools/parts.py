@@ -5,14 +5,36 @@
 # Usage: tools/parts.py [name ...]     (default: all)
 import glob, os, re, subprocess, sys
 
+def notes(name):
+    fn = 'notes/%s.py' % name
+    g = {}
+    if os.path.exists(fn):
+        exec(open(fn).read(), g)
+    return g
+
+
 def notes_entries(name):
     """Extra entry points from notes/NAME.py (ENTRIES = ['ааааа', ...])."""
-    fn = 'notes/%s.py' % name
-    if not os.path.exists(fn):
-        return []
-    g = {}
-    exec(open(fn).read(), g)
-    return ['-e' + e for e in g.get('ENTRIES', [])]
+    return ['-e' + e for e in notes(name).get('ENTRIES', [])]
+
+
+def text_calls(name, data, base):
+    """Words of text that follow calls of print routines with inline text:
+    notes/NAME.py TEXTCALLS = {'ааааа': f}, f(parameter) - number of text
+    words after a call 'ПВ(Л) ааааа(М) / параметр'. Returns the symbol table
+    for disbesm6 -n (the first text word does not execute: flow stops
+    there) and entry points after the texts."""
+    calls = {int(a, 8): f for a, f in notes(name).get('TEXTCALLS', {}).items()}
+    sym, ent = [], []
+    for i in range(len(data) // 6):
+        w = int.from_bytes(data[i*6:i*6+6], 'big')
+        l, r = w >> 24, w & 0xffffff
+        if (l & 0o3700000) == 0o3100000 and (l & 0o77777) in calls:
+            n = calls[l & 0o77777](r)
+            if n:
+                sym.append('%05o A -\n' % (base + i + 1))
+            ent.append('-e%05o' % (base + i + 1 + n))
+    return sym, ent
 
 
 
@@ -46,7 +68,12 @@ for l in open('parts.txt'):
     with open('parts/%s.cov' % name, 'w') as f:
         f.writelines('%s: L\n' % a for a in sorted(cov))
     entry = min(cov) if cov else addr
-    alt = ['-e%05o' % a for a in sorted(altret(open('parts/%s.bin' % name, 'rb').read(), int(addr, 8)))]
+    data = open('parts/%s.bin' % name, 'rb').read()
+    alt = ['-e%05o' % a for a in sorted(altret(data, int(addr, 8)))]
+    sym, tent = text_calls(name, data, int(addr, 8))
+    if sym:
+        open('parts/%s.sym' % name, 'w').writelines(sym)
+        alt += tent + ['-nparts/%s.sym' % name]
     out = subprocess.run([DIS, '-s', '-a' + addr, '-e' + entry] + alt + notes_entries(name) + [
                           '--trace=parts/%s.cov' % name, 'parts/%s.bin' % name],
                          stdout=subprocess.PIPE, check=True).stdout.decode()

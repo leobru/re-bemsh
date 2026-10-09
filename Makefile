@@ -3,7 +3,7 @@ DISBESM6 ?= $(HOME)/git/leobru/dispak-tools/disbesm6
 export DISBESM6
 PARTS := $(shell grep -v '^\#' parts.txt | awk '{print $$1}')
 ZONES := $(shell grep -v '^\#' parts.txt | awk '{for (i = 4; i <= NF; i++) print $$i}')
-JOBS  := avmd spe66 macros inmac errmac blmak asm1
+JOBS  := avmd spe66 macros inmac errmac blmak asm1 zongp zgr
 
 all: check
 
@@ -29,6 +29,10 @@ jobs/blmak.b6: jobs/inmac.be
 	tools/job.pl -k -l -c БЛМАК $< > $@
 jobs/asm1.b6: jobs/asm1.be
 	tools/job.pl -k -l -z $< > $@
+jobs/zongp.b6: jobs/zongp.be
+	tools/job.pl -l -c "НАЗ   003000,ЗОНГП 430010     1" $< > $@
+jobs/zgr.b6: jobs/zgr.be
+	tools/job.pl -l -z -c "ЗОНМЕТ430020,НАЗ   004000,ЗОНГП 430010     2" $< > $@
 traces: $(addprefix traces/,$(addsuffix .ev,$(JOBS)))
 traces/%.ev: jobs/%.b6
 	@mkdir -p traces

@@ -27,6 +27,10 @@ jobs/errmac.b6: jobs/errmac.be
 	tools/job.pl -k -l -c ПЕЧМАК $< > $@
 jobs/blmak.b6: jobs/inmac.be
 	tools/job.pl -k -l -c БЛМАК $< > $@
+jobs/colon.b6: jobs/colon.be
+	tools/job.pl -l $< > $@
+jobs/colonb.b6: jobs/colon.be
+	tools/job.pl -k -l -c БЛМАК $< > $@
 jobs/asm1.b6: jobs/asm1.be
 	tools/job.pl -k -l -z $< > $@
 jobs/zongp.b6: jobs/zongp.be

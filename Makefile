@@ -3,7 +3,7 @@ DISBESM6 ?= $(HOME)/git/leobru/dispak-tools/disbesm6
 export DISBESM6
 PARTS := $(shell grep -v '^\#' parts.txt | awk '{print $$1}')
 ZONES := $(shell grep -v '^\#' parts.txt | awk '{for (i = 4; i <= NF; i++) print $$i}')
-JOBS  := avmd spe66 macros inmac errmac blmak asm1 zongp zgr
+JOBS  := avmd spe66 macros inmac errmac blmak asm1 zongp zgr rvs75
 
 all: check
 
@@ -33,6 +33,14 @@ jobs/zongp.b6: jobs/zongp.be
 	tools/job.pl -l -c "НАЗ   003000,ЗОНГП 430010     1" $< > $@
 jobs/zgr.b6: jobs/zgr.be
 	tools/job.pl -l -z -c "ЗОНМЕТ430020,НАЗ   004000,ЗОНГП 430010     2" $< > $@
+# РВС 10/75 (зона 0144) отдельной задачей: колода jobs/rvs75.job, модуль -
+# из прогона jobs/zgr.b6 (ЗОНМОД)
+jobs/rvs75.b6: jobs/rvs75.job
+	cp $< $@
+traces/rvs75.ev: jobs/rvs75.b6 jobs/zgr.b6
+	@mkdir -p traces
+	tools/run.sh jobs/zgr.b6 traces/rvs75.2222 > /dev/null
+	IN2222=traces/rvs75.2222 tools/trace.sh $< traces/rvs75.txt | tools/phases.py - traces/rvs75.cov > $@
 traces: $(addprefix traces/,$(addsuffix .ev,$(JOBS)))
 traces/%.ev: jobs/%.b6
 	@mkdir -p traces

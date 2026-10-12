@@ -27,6 +27,10 @@ jobs/errmac.b6: jobs/errmac.be
 	tools/job.pl -k -l -c ПЕЧМАК $< > $@
 jobs/blmak.b6: jobs/inmac.be
 	tools/job.pl -k -l -c БЛМАК $< > $@
+# предпроход РЕДАК: сначала ARCH=файл tools/run.sh с колодой
+# jobs/arap/1-write.deck (job.pl -r -w), потом этот прогон с тем же ARCH
+jobs/redak.b6: jobs/arap/redak.deck
+	tools/job.pl -r -w -1 $< > $@
 jobs/colon.b6: jobs/colon.be
 	tools/job.pl -l $< > $@
 jobs/colonb.b6: jobs/colon.be

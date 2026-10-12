@@ -71,6 +71,8 @@ for l in open('parts.txt'):
     data = open('parts/%s.bin' % name, 'rb').read()
     alt = ['-e%05o' % a for a in sorted(altret(data, int(addr, 8)))]
     sym, tent = text_calls(name, data, int(addr, 8))
+    # STOPS = ['ааааа', ...] in notes: data right after code, no flow there
+    sym += ['%s A -\n' % a for a in notes(name).get('STOPS', [])]
     if sym:
         open('parts/%s.sym' % name, 'w').writelines(sym)
         alt += tent + ['-nparts/%s.sym' % name]
@@ -81,6 +83,14 @@ for l in open('parts.txt'):
         # the first word carries the module name, not a D/G label
         # (disbesm6 starts an image loaded at 0 from word 1)
         start = int(addr, 8) or 1
+        if int(addr, 8) == 0:
+            # an indexed operand below 0100 is a number, not an address of
+            # the image (СЛИА 1(М3) comes out as СЛИА G00001(М3))
+            # (not in jumps, where it is an address); with УИА too: a counter
+            out = re.sub(r'(?m)^(\S*\t(?!пио|пино|цикл|пв|пб|по|пе)\S+\t)[GD]000([0-7]{2})([+-]\d+)?(\(М)',
+                         lambda m: m.group(1) + str(int(m.group(2), 8) + int(m.group(3) or 0))
+                         + m.group(4) if int(m.group(2), 8) + int(m.group(3) or 0) < 0o100
+                         else m.group(0), out)
         out = re.sub(r'(?<![А-Я0-9])[GD]%05o(?![0-7])' % start, mod, out)
         f.write(out.replace('НЕИМЯ\tСТАРТ', mod + '\tСТАРТ', 1))
     print('%-7s %s %s: %d адресов исполнялось' % (name, addr, ' '.join(zones), len(cov)))

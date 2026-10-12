@@ -120,10 +120,12 @@ def gostconst(b, adj):
         return "п'%s'%s" % (''.join(GOST[x] for x in b), end)
 
 
-def t8const(w):
+def t8const(w, adj=False, single=False):
     """A word as a text constant in the БЕМШ code: Т'...' (right-justified)
     or МnТ'...' (shifted left by n bits), None if it is not text: two or
-    more characters with a letter, or four or more without."""
+    more characters with a letter, or three or more without; two without a
+    letter next to another text (adj); one in a table of characters
+    (single: CHARS in the notes)."""
     bs = [(w >> (40 - 8 * k)) & 0xff for k in range(6)]
     lead = next((k for k, b in enumerate(bs) if b), 6)
     trail = next((k for k, b in enumerate(reversed(bs)) if b), 6)
@@ -133,7 +135,7 @@ def t8const(w):
     if any(b not in T8 for b in body):
         return None
     letters = any(b >= 0o241 for b in body)
-    if not (len(body) >= 4 or len(body) >= 2 and letters):
+    if not (len(body) >= 3 or len(body) >= 2 and (letters or adj) or single):
         return None
     text = ''.join(T8[b] for b in body)
     # a word with Latin-only letters and no Russian-only ones is Latin
@@ -578,6 +580,8 @@ def make(name):
 
     plo, phi = ranges()[name]
     image = open('parts/%s.bin' % name, 'rb').read()
+    # CHARS = ['ааааа-ббббб', 'ааааа', ...]: tables of single characters
+    chars = [tuple((x.split('-') * 2)[:2]) for x in notes.get('CHARS', [])]
     using = None                    # (register, base) of the УПОТР in effect
     out = []
     for i, l in enumerate(L, 1):
@@ -606,7 +610,16 @@ def make(name):
         if first and len(f) >= 3 and f[1] == 'конд' and not f[2].startswith('A(') \
                 and re.fullmatch(r'[0-7]{5}', a) and plo <= int(a, 8) < phi:
             k = (int(a, 8) - plo) * 6
-            t = t8const(int.from_bytes(image[k:k + 6], 'big'))
+            def strict(j):          # is source line j a text word by itself
+                b2 = amap.get(j, '')
+                g = L[j - 1].split('\t') if 0 < j <= len(L) else []
+                if len(g) < 3 or g[1] != 'конд' or not re.fullmatch(r'[0-7]{5}', b2):
+                    return False
+                k2 = (int(b2, 8) - plo) * 6
+                return bool(t8const(int.from_bytes(image[k2:k2 + 6], 'big')))
+            t = t8const(int.from_bytes(image[k:k + 6], 'big'),
+                        strict(i - 1) or strict(i + 1),
+                        any(lo <= a <= hi for lo, hi in chars))
             if not t and f[2].startswith("в'"):
                 t = gostconst(image[k:k + 6], any(
                     "\tконд\tп'" in L[j] for j in (i - 2, i) if 0 <= j < len(L)))
@@ -704,6 +717,33 @@ def make(name):
     for c in chunks(sorted(set(expo.values()))):
         head.append('\tвход\t' + ','.join(c))
     out[2:2] = head
+    # consecutive whole words of text are one ТЕКСТ (up to 6 words in a line)
+    def whole(l):
+        m = re.fullmatch(r"(\S*)\tконд\t([пт])'(.*)'", l)
+        if m and len(m.group(3).replace("''", "'")) == 6:
+            return m.groups()
+    merged = []; grp = None         # grp: [label, kind, text, words]
+    def flush():
+        if grp:
+            # ТЕКСТ pads the last word with spaces: trailing ones are dropped
+            t = grp[2].rstrip(' ')
+            keep = 6 * (grp[3] - 1) + 1 - len(t.replace("''", "'"))
+            t += ' ' * max(keep, 0)
+            if grp[3] == 1 and t == grp[2]:
+                merged.append("%s\tконд\t%s'%s'" % (grp[0], grp[1], t))
+            else:
+                merged.append("%s\tтекст\t%s'%s'" % (grp[0], grp[1], t))
+    for l in out:
+        w = whole(l)
+        if w and grp and not w[0] and w[1] == grp[1] and grp[3] < 6:
+            grp[2] += w[2]; grp[3] += 1
+            continue
+        flush()
+        grp = [w[0], w[1], w[2], 1] if w else None
+        if not w:
+            merged.append(l)
+    flush()
+    out = merged
     text = '\n'.join(out)
     open('parts/%s.be' % name, 'w', encoding='utf-8').write(text)
     insplit = {'%05o' % x for v in split.values() for x, n in v}

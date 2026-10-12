@@ -131,3 +131,6 @@ NAMES.update({
 
 # code found by tools/kondafter.py (unlabelled КОНД after instructions)
 ENTRIES = list(globals().get('ENTRIES', [])) + ['02002', '02003', '02517', '02520', '03772', '03773', '04241']
+
+# таблицы одиночных символов в коде БЕМШ (КОНД Т'x')
+CHARS = ['06240', '06262-06266']

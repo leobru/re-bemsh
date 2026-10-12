@@ -106,3 +106,6 @@ ENTRIES = list(globals().get('ENTRIES', [])) + [
 
 # code found by tools/kondafter.py (unlabelled КОНД after instructions)
 ENTRIES = list(globals().get('ENTRIES', [])) + ['04607', '04610', '04624', '04625', '04640']
+
+# таблицы одиночных символов в коде БЕМШ (КОНД Т'x')
+CHARS = ['04713', '05055', '05075', '05103']

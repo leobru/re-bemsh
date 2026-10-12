@@ -643,6 +643,13 @@ def make(name):
         srcsub[i] = t
         for i2, a2 in grp:
             srcsub[i2] = ('drop',)
+    errtab = {}; errskip = set()
+    if notes.get('ERRTAB'):
+        e0, e1 = [int(x, 8) for x in notes['ERRTAB']]
+        for x in range(e0, e1, 2):
+            k = (x - plo) * 6
+            errtab['%05o' % x] = (int.from_bytes(image[k:k + 6], 'big'),
+                                  int.from_bytes(image[k + 6:k + 12], 'big'))
     # CHARS = ['ааааа-ббббб', 'ааааа', ...]: tables of single characters
     chars = [tuple((x.split('-') * 2)[:2]) for x in notes.get('CHARS', [])]
     using = None                    # (register, base) of the УПОТР in effect
@@ -672,6 +679,37 @@ def make(name):
         if l.startswith('\tФИНИШ'):
             for a2, n in sorted(ekv_own.items()):
                 out.append("%s\tэкв\t'%s'" % (n, a2))
+        # ERRTAB = ('ааааа', 'ббббб'): messages of two words; bits 48 and 40
+        # of the first word hold the severity instead of the top bits of
+        # the first two characters. One ТЕКСТ for a message; with a
+        # severity below 4 the first word is КОНД with the bits taken off.
+        if first and a in errskip:
+            continue
+        if first and a in errtab:
+            w1, w2 = errtab[a]
+            b12 = [(w >> (40 - 8 * k)) & 0xff for w in (w1 | 0o4010000000000000, w2) for k in range(6)]
+            n2 = '%05o' % (int(a, 8) + 1)
+            two = not L[byaddr[n2] - 1].split('\t')[0] and n2 not in names
+            if all(x in T8 for x in b12):
+                tx = ''.join(T8[x] for x in b12)
+                if any(x in LATONLY for x in b12) and not any(x >= 0o300 for x in b12):
+                    tx = tx.translate(str.maketrans('АВСЕНКМОРТХУ', 'ABCEHKMOPTXY'))
+                cut = lambda t: (t.rstrip(' ') or ' ')
+                h1, h2 = tx[:len(tx) - len(''.join(T8[x] for x in b12[6:]))], ''.join(T8[x] for x in b12[6:])
+                h1, h2 = ''.join(T8[x] for x in b12[:6]), ''.join(T8[x] for x in b12[6:])
+                sev = ('' if w1 >> 47 & 1 else "м47в'1'") + ('' if w1 >> 39 & 1 else "м39в'1'")
+                lab0 = l.split('\t')[0]
+                if not sev and two:
+                    t12 = (h1 + h2).rstrip(' ')
+                    out.append("%s\tтекст\tт'%s'" % (lab0, t12 + ' ' * max(7 - len((h1 + h2).rstrip(' ').replace("''", "'")), 0)))
+                    errskip.add(n2)
+                    continue
+                out.append("%s\t%s\tт'%s'%s" % (lab0, 'конд' if sev else 'текст',
+                                                  h1 if sev else cut(h1), sev))
+                if two:
+                    out.append("\tтекст\tт'%s'" % cut(h2))
+                    errskip.add(n2)
+                continue
         f = l.split('\t')
         if first and len(f) >= 3 and f[1] == 'конд' and not f[2].startswith('A(') \
                 and re.fullmatch(r'[0-7]{5}', a) and plo <= int(a, 8) < phi:
@@ -686,6 +724,8 @@ def make(name):
             t = t8const(int.from_bytes(image[k:k + 6], 'big'),
                         strict(i - 1) or strict(i + 1),
                         any(lo <= a <= hi for lo, hi in chars))
+            if a in notes.get('REALS', {}):         # КОНД Е'число'
+                t = "е'%s'" % notes['REALS'][a]
             if not t and f[2].startswith("в'"):
                 t = gostconst(image[k:k + 6], any(
                     "\tконд\tп'" in L[j] for j in (i - 2, i) if 0 <= j < len(L)))
@@ -826,6 +866,16 @@ def make(name):
             merged.append(l)
     flush()
     out = merged
+    # equal КОНД words in a row: КОНД (count)value
+    rep = []
+    for l in out:
+        m = re.fullmatch(r"(\S*)\tконд\t((?:м\d+)?[впт]'[^\t]*')", l)
+        p = re.fullmatch(r"(\S*)\tконд\t(?:\((\d+)\))?((?:м\d+)?[впт]'[^\t]*')", rep[-1]) if rep and m else None
+        if m and p and not m.group(1) and p.group(3) == m.group(2):
+            rep[-1] = '%s\tконд\t(%d)%s' % (p.group(1), int(p.group(2) or 1) + 1, m.group(2))
+        else:
+            rep.append(l)
+    out = rep
     text = '\n'.join(out)
     open('parts/%s.be' % name, 'w', encoding='utf-8').write(text)
     insplit = {'%05o' % x for v in split.values() for x, n in v}

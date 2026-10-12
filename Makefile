@@ -64,6 +64,15 @@ parts: zones traces
 be:
 	tools/mkbe.py $(basename $(notdir $(wildcard notes/*.py)))
 
+# Текст фрагмента исходника (source.txt: диск 2053, зоны 0650-0653, код
+# БЕМШ) в notes/src/*.py:
+# операнды, макровызовы и комментарии для совпавших строк mred74 и mred2
+source.txt:
+	besmtool dump 2053 --start=0650 --length=4 --to-file=$@ > /dev/null
+src: source.txt
+	tools/t8text.py source.txt > source.utf8
+	tools/srcapply.py source.utf8 mred74 mred2
+
 # Обратная сборка каждой части и побайтное сравнение
 check:
 	@tools/reasm.pl $(addprefix parts/,$(addsuffix .be,$(PARTS)))
@@ -71,4 +80,4 @@ check:
 clean:
 	rm -f 2222 parts/*.new parts/*.b6 parts/*.lst
 
-.PHONY: all zones traces parts be check clean
+.PHONY: all zones traces parts be src check clean

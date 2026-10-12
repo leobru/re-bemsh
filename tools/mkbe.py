@@ -45,7 +45,15 @@ def load_notes(name):
     spec = importlib.util.spec_from_file_location('notes_' + name, fn)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return {k: getattr(mod, k) for k in dir(mod) if k.isupper()}
+    res = {k: getattr(mod, k) for k in dir(mod) if k.isupper()}
+    # the text of an original source fragment (tools/srcapply.py)
+    fn = 'notes/src/%s.py' % name
+    if os.path.exists(fn) and not os.environ.get('NOSRC'):     # NOSRC=1: plain
+        ns = {}
+        exec(open(fn, encoding='utf-8').read(), ns)
+        res.update({k: ns[k] for k in ('SRC', 'SRCREG', 'SRCNAMES')})
+        res['NAMES'] = dict(ns['SRCNAMES'], **res.get('NAMES', {}))
+    return res
 
 
 def addrmap(lst):
@@ -118,6 +126,17 @@ def gostconst(b, adj):
     n = sum(x >= 0o40 for x in b)
     if n >= 2 or adj and (n == 1 or end):
         return "п'%s'%s" % (''.join(GOST[x] for x in b), end)
+
+
+def counter(L, i, r):
+    """Is register r, loaded in source line i, a loop counter: ЦИКЛ by it
+    follows before the register is loaded again."""
+    for x in L[i:i + 16]:
+        if re.match(r'\S*\tцикл\t.*\(%s\)' % r, x):
+            return True
+        if re.match(r'\S*\t(уиа\t.*\(%s\)|уи\t%s$|уии\t%s\()' % (r, r, r), x):
+            return False
+    return False
 
 
 def t8const(w, adj=False, single=False):
@@ -223,6 +242,17 @@ def ext_map(part):
         labs = dis_labels(u)
         for a in [a for a in res if res[a] == u]:
             out[a] = (names.get(a) or labs.get(a) or 'D' + a, u)
+    # names of the owners in the operands of the source text (SRC)
+    inv = {}
+    for u in uses:
+        for a, n in load_notes(u).get('NAMES', {}).items():
+            inv.setdefault(n, (a, u))
+    for t in load_notes(part).get('SRC', {}).values():
+        if t[0] == 'drop' or t[-2] is None:
+            continue
+        for x in re.findall(r"(?<![А-ЯA-Z0-9'])[А-ЯA-Z][А-ЯA-Z0-9]*", re.sub(r"'[^']*'", '', t[-2])):
+            if x in inv and inv[x][0] not in out:
+                out[inv[x][0]] = (x, inv[x][1])
     return out
 
 
@@ -375,6 +405,12 @@ def make(name):
         exact[i] = ('%05o' % t, r)
         if exact[i][0] not in names and exact[i][0] not in labs0 and t != (plo or 1):
             names[exact[i][0]] = 'D' + exact[i][0]
+    # a negative loop counter that disbesm6 took for an address of a part
+    # in high memory: УИА D7xxxx(Мr) with ЦИКЛ by the same register after it
+    for i, l in enumerate(L, 1):
+        m = re.fullmatch(r"(\S*\tуиа\t)[GD](7[0-7]{4})\((М\d+)\)", l)
+        if m and counter(L, i, m.group(3)):
+            L[i - 1] = '%s%d(%s)' % (m.group(1), int(m.group(2), 8) - 0o100000, m.group(3))
     # УИА 'адрес'(Мr) with an address inside this part is written with
     # the label of that word
     jreg = {m.group(1) for l in L for m in [re.match(r'\S*\tпб\t\S*\((М\d+)\)', l)] if m}
@@ -389,6 +425,9 @@ def make(name):
         # (an image at 0: small numbers look like addresses, so there a
         # jump through the register is required)
         if not plo <= t < phi or plo == 0 and not (t >= 0o100 and (r in jreg or 'пб' in nxt)):
+            continue
+        # a negative loop counter: ЦИКЛ by the same register follows
+        if t >= 0o70000 and counter(L, i, r):
             continue
         exact[i] = ('%05o' % t, r)
         if exact[i][0] not in names and exact[i][0] not in labs0:
@@ -580,6 +619,30 @@ def make(name):
 
     plo, phi = ranges()[name]
     image = open('parts/%s.bin' % name, 'rb').read()
+    # source text for whole lines (SRC): a macro call replaces its expansion
+    # unless a line inside it has to carry a label
+    extinv = {n: a for a, n in ext.items()}
+    srcsub = {}
+    SRC = notes.get('SRC', {})
+    order = [(i, amap.get(i)) for i in range(1, len(L) + 1)
+             if amap.get(i) and byaddr.get(amap.get(i)) == i]
+    for k, (i, a) in enumerate(order):
+        t = SRC.get(a)
+        if not t or t[0] == 'drop':
+            continue
+        if t[0] == 'line':
+            srcsub[i] = t
+            continue
+        grp = []
+        for i2, a2 in order[k + 1:]:
+            if SRC.get(a2) != ('drop',):
+                break
+            grp.append((i2, a2))
+        if any(L[i2 - 1].split('\t')[0] or a2 in names for i2, a2 in grp):
+            continue
+        srcsub[i] = t
+        for i2, a2 in grp:
+            srcsub[i2] = ('drop',)
     # CHARS = ['ааааа-ббббб', 'ааааа', ...]: tables of single characters
     chars = [tuple((x.split('-') * 2)[:2]) for x in notes.get('CHARS', [])]
     using = None                    # (register, base) of the УПОТР in effect
@@ -589,6 +652,9 @@ def make(name):
         first = a is not None and byaddr.get(a) == i
         if i == 3 and 'TOP' in notes:
             out.extend(notes['TOP'].strip('\n').split('\n'))
+        if i == 3 and notes.get('SRCREG'):
+            out.append('* ИМЕНА РЕГИСТРОВ ИЗ ИСХОДНОГО ТЕКСТА')
+            out.extend('%s\tэкв\t%d' % x for x in sorted(notes['SRCREG'].items(), key=lambda x: (x[1], x[0])))
         if first and a in notes.get('BLOCK', {}):
             out.extend(notes['BLOCK'][a].strip('\n').split('\n'))
         if first and a in newlab:
@@ -690,6 +756,22 @@ def make(name):
                 l = l + '\t' + notes['INLINE'][a]
             else:
                 l = '\t'.join(f[:2]) + '\t,' + notes['INLINE'][a]
+        st = srcsub.get(i)
+        if st and st[0] == 'drop':
+            continue
+        if st:
+            f = l.split('\t')
+            if st[0] == 'macro':
+                f = [f[0], st[1], st[2]]
+            elif st[1] is not None:
+                f = f[:2] + [st[1]]
+            else:
+                f = f[:3] if len(f) > 2 and not f[2].startswith(',') else f[:2] + ['']
+            cm = st[-1] or (l.split('\t')[3] if len(l.split('\t')) > 3 and st[0] == 'line' else '')
+            for x in re.findall(r"(?<![А-ЯA-Z0-9'])[А-ЯA-Z][А-ЯA-Z0-9]*", re.sub(r"'[^']*'", '', f[2])):
+                if x in extinv:
+                    used_ext[extinv[x]] = x
+            l = '\t'.join(f) + (('\t' if f[2] else ',') + cm if cm else '')
         if i in split:
             f = l.split('\t')
             a0, total = int(a, 8), int(f[2])

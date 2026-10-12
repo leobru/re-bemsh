@@ -167,3 +167,11 @@ NAMES.update({
  '05066': 'ТТЕКОШ',  # тексты сообщений по 2 слова
  '07417': 'ОБЛНУЛ',  # обнуляемая область
 })
+
+# code found by tools/kondafter.py (unlabelled КОНД after instructions)
+ENTRIES = list(globals().get('ENTRIES', [])) + ['06005', '06006', '06007']
+ENTRIES = list(globals().get('ENTRIES', [])) + ['06403']   # ПБ / адрес
+
+# нулевые области, а не цепочки ЗП: дизассемблер по ним не идёт
+STOPS = ['07417']
+ENTRIES = list(globals().get('ENTRIES', [])) + ['06767']   # код после нулевой области

@@ -38,14 +38,18 @@ def text_calls(name, data, base):
 
 
 
+MSG = 0o1322        # СООБЩ of the monitor: its parameter addresses a text
+
+
 def altret(data, base):
     """Second-return addresses: a word 'ПВ x(М) / 00 000 aaaa' (call in the
-    left half, address in the right) - the callee may return to aaaa."""
+    left half, address in the right) - the callee may return to aaaa
+    (not after ПВЛ СООБЩ: there it is the address of the text)."""
     res = set()
     for i in range(len(data) // 6):
         w = int.from_bytes(data[i*6:i*6+6], 'big')
         l, r = w >> 24, w & 0xffffff
-        if (l & 0o3700000) == 0o3100000 and (r >> 15) == 0 and \
+        if (l & 0o3700000) == 0o3100000 and (l & 0o77777) != MSG and (r >> 15) == 0 and \
                 base <= r < base + len(data) // 6 and r != base + i + 1:
             res.add(r)
     return res

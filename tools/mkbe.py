@@ -98,6 +98,28 @@ T8.update({0o300: 'Ю', 0o302: 'Б', 0o303: 'Ц', 0o304: 'Д', 0o306: 'Ф',
 LATONLY = {b for b, c in T8.items() if c in 'DFGIJLNQRSUVWZ'}
 
 
+GOST = {i: str(i) for i in range(10)}
+GOST.update({0o12: '+', 0o13: '-', 0o14: '/', 0o15: ',', 0o16: '.', 0o17: ' ',
+             0o22: '(', 0o23: ')', 0o25: '=', 0o26: ';', 0o31: '*', 0o35: '<',
+             0o36: '>', 0o37: ':'})
+GOST.update({0o40 + i: c for i, c in enumerate('АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЫЬЭЮЯ')})
+
+
+def gostconst(b, adj):
+    """п'...' for a word of six GOST characters that disbesm6 left octal:
+    with a letter next to another text word, or with two letters."""
+    end = ''
+    if b.count(0o231) == 1:         # the end-of-text marker: п'...0' plus в'231'
+        k = b.index(0o231)
+        end = "в'231'" if k == 5 else "м%dв'231'" % (8 * (5 - k))
+        b = b[:k] + bytes([0]) + b[k + 1:]
+    if not all(x in GOST for x in b):
+        return None
+    n = sum(x >= 0o40 for x in b)
+    if n >= 2 or adj and (n == 1 or end):
+        return "п'%s'%s" % (''.join(GOST[x] for x in b), end)
+
+
 def t8const(w):
     """A word as a text constant in the БЕМШ code: Т'...' (right-justified)
     or МnТ'...' (shifted left by n bits), None if it is not text: two or
@@ -255,6 +277,14 @@ def make(name):
     for n, a in sorted(amap.items()):
         byaddr.setdefault(a, n)
     L = open(plain, encoding='utf-8').read().split('\n')
+    # Э66 with an address inside the part addresses its labelled word
+    have = {l.split('\t')[0] for l in L}
+    for i, l in enumerate(L):
+        m = re.fullmatch(r"\tэ66\t'([0-7]+)'", l)
+        if m:
+            for c in 'DG':
+                if '%s%05o' % (c, int(m.group(1), 8)) in have:
+                    L[i] = '\tэ66\t%s%05o' % (c, int(m.group(1), 8))
     # a ПАМ running past 077777 overflows the location counter (warning
     # ПЕРЕПОЛН СЧА): one word is enough, the rest of the image is zero
     for i, l in enumerate(L, 1):
@@ -264,7 +294,17 @@ def make(name):
                 int(amap[i], 8) + int(f[2]) >= 0o100000:
             f[2] = '1'
             L[i - 1] = '\t'.join(f)
-    # operands relative to a base register (BASEREG)
+    # the last ПАМ of a part is not filled up to the end: РВС does it
+    fin = next((i for i, l in enumerate(L) if l.startswith('\tФИНИШ')), None)
+    if fin:
+        f = L[fin - 1].split('\t')
+        a0 = amap.get(fin, '')
+        if len(f) >= 3 and f[1] == 'пам' and re.fullmatch(r'\d+', f[2]) and \
+                re.fullmatch(r'[0-7]{5}', a0) and amap.get(fin + 1) not in names:
+            last = max([int(a, 8) for a in names if re.fullmatch(r'[0-7]{5}', a)
+                        and a0 <= a < '%05o' % (int(a0, 8) + int(f[2]))] + [int(a0, 8)])
+            f[2] = str(last - int(a0, 8) + 1)
+            L[fin - 1] = '\t'.join(f)
     based = {}                      # source line -> (target, base, 'Мr')
     setbase = {}                    # source line of УИА -> (base, 'Мr')
     fmap = {}
@@ -352,6 +392,131 @@ def make(name):
         if exact[i][0] not in names and exact[i][0] not in labs0:
             data = not tl or L[tl - 1].split('\t')[1] in ('конд', 'конк', 'пам', 'текст')
             names[exact[i][0]] = ('D' if data else 'G') + exact[i][0]
+    # the parameter in the right half after ПВЛ (as in ПВЛ СООБЩ(М16): the
+    # length in bits 20-16 and the address of the text) is written as
+    # ДК код,МЕТКА; the right half after ПБ in the left half is never
+    # executed: an address there is КОНК A(МЕТКА), a second ПБ stays ПБ
+    msg = {}; keep = {}; kka = {}
+    byname = {n: a for a, n in names.items()}
+    fmt = {byname.get(x, x) for x in notes.get('FMTPAR', [])}
+    byname = {n: a for a, n in names.items()}
+    fmt = {byname.get(x, x) for x in notes.get('FMTPAR', [])}
+    sa = [a for a, n in list(ext.items()) + list(names.items()) if n == 'СООБЩ']
+    call = re.compile(r"\S*\tпвл\t(?:'%o'|[GD]%s)\(М16\)" % (int(sa[0], 8), sa[0])) if sa else None
+    img = open('parts/%s.bin' % name, 'rb').read()
+    for i, l in enumerate(L, 1):
+        f = l.split('\t')
+        a = amap.get(i, '')
+        if i < 2 or len(f) < 3 or f[0] or f[1] != 'конк' or not a.endswith('п'):
+            continue
+        pf = L[i - 2].split('\t')
+        k = (int(a[:5], 8) - plo) * 6
+        h = int.from_bytes(img[k + 3:k + 6], 'big')
+        t, c, r = h & 0o77777, (h >> 15) & 0o37, h >> 20
+        own = plo <= t < phi and not (plo == 0 and t < 0o100)
+        ta = '%05o' % t
+        if len(pf) > 1 and pf[1] == 'пб':
+            if r == 0 and c in (0, 0o30) and (own or ta in ext):
+                kka[i] = (ta, 'пб\t%s' if c else 'конк\tA(%s)')
+                if own and ta not in names and ta not in labs0:
+                    names[ta] = ('G' if c else 'D') + ta
+            continue
+        if len(pf) < 2 or pf[1] != 'пвл':
+            continue
+        m = re.fullmatch(r"(?:[GD]([0-7]{5})|'([0-7]+)')\(М\d+\)", pf[2]) if len(pf) > 2 else None
+        if m and '%05o' % int(m.group(1) or m.group(2), 8) in fmt:
+            w, o = (h >> 12) & 0o377, h & 0o7777    # a format, not an address
+            keep[i] = '\tкк\t%s,%s%s' % (w if w < 0o100 else "'%o'" % w,
+                                         o if o < 8 else "'%o'" % o, '(%d)' % r if r else '')
+            continue
+        m = re.fullmatch(r"(?:[GD]([0-7]{5})|'([0-7]+)')\(М\d+\)", pf[2]) if len(pf) > 2 else None
+        if m and '%05o' % int(m.group(1) or m.group(2), 8) in fmt:
+            w, o = (h >> 12) & 0o377, h & 0o7777    # a format, not an address
+            keep[i] = '\tкк\t%s,%s%s' % (w if w < 0o100 else "'%o'" % w,
+                                         o if o < 8 else "'%o'" % o, '(%d)' % r if r else '')
+            continue
+        if r:                       # an offset by a register
+            o = t - 0o100000 if t >= 0o70000 else t
+            keep[i] = '\tдк\t%d,%s(М%o)' % (c, (o or '') if abs(o) < 0o100 else "'%o'" % t, r)
+        elif own or call and call.fullmatch(L[i - 2]) and ta in ext:
+            msg[i] = (c, ta)
+            if own and ta not in names and ta not in labs0:
+                names[ta] = 'D' + ta
+        else:                       # a number
+            keep[i] = '\tдк\t%d,%s' % (c, t if t < 8 else "'%o'" % t)
+    # half-words of information words that disbesm6 shows as КК: an address
+    # of this part is КОНК A(МЕТКА), an offset by a register stays a number
+    for i, l in enumerate(L, 1):
+        f = l.split('\t')
+        if len(f) < 3 or f[1] != 'кк':
+            continue
+        m = re.fullmatch(r"7,'([0-7]{1,4})'", f[2])
+        if m and plo <= 0o70000 + int(m.group(1), 8) < phi:
+            ta = '%05o' % (0o70000 + int(m.group(1), 8))
+            kka[i] = (ta, 'конк\tA(%s)')
+            if ta not in names and ta not in labs0:
+                names[ta] = 'D' + ta
+        m = re.fullmatch(r"0,'([0-7]+)'(\(М\d+\))", f[2])
+        if m:
+            f[2] = '0,%d%s' % (int(m.group(1), 8), m.group(2))
+            L[i - 1] = '\t'.join(f)
+    # a whole word "address of this part / filler" is КОНК A(МЕТКА): BEMSH
+    # pads it with МОДА itself before the labelled word that follows
+    kword = {}
+    for i, l in enumerate(L, 1):
+        f = l.split('\t')
+        a = amap.get(i, '')
+        if len(f) < 3 or f[1] != 'конд' or not re.fullmatch(r'[0-7]{5}', a) \
+                or not plo <= int(a, 8) < phi:
+            continue
+        k = (int(a, 8) - plo) * 6
+        w = int.from_bytes(img[k:k + 6], 'big')
+        t = w >> 24
+        if w & 0o77777777 != 0o02200000 or not plo <= t < phi or plo == 0 and t < 0o100:
+            continue
+        na = '%05o' % (int(a, 8) + 1)
+        if i < len(L) and not L[i].split('\t')[0] and na not in names and byaddr.get(na) == i + 1:
+            names[na] = ('D' if L[i].split('\t')[1] in ('конд', 'конк', 'пам', 'текст') else 'G') + na
+        kword[i] = ('%05o' % t, i < len(L) and (bool(L[i].split('\t')[0]) or na in names))
+        if kword[i][0] not in names and kword[i][0] not in labs0:
+            names[kword[i][0]] = 'D' + kword[i][0]
+    # explicit fillers kept by stripmoda: BEMSH pads a word itself before a
+    # labelled line and before ПВ/extracodes, so the line after a filler in
+    # a right half gets a label (its address has a name then) and that
+    # filler is dropped; only fillers that nothing implies stay as МОДА
+    dropfill = set(); leftfill = set(); addlab = {}
+    i = 1
+    while i <= len(L):
+        if not L[i - 1].startswith('\tмода\t,'):
+            i += 1
+            continue
+        j = i
+        while j <= len(L) and L[j - 1].startswith('\tмода\t,'):
+            j += 1
+        fills = list(range(i, j))     # filler lines, the next line is j
+        i = j
+        if j > len(L) or any(not amap.get(k) for k in fills):
+            continue
+        f = L[j - 1].split('\t')
+        if len(f) < 2 or f[1] == 'ФИНИШ':
+            continue
+        aj = amap.get(j, '')
+        ronly = f[1] == 'пв' or f[1].startswith('Э')
+        if ronly and aj.endswith('п') and not amap[fills[-1]].endswith('п'):
+            dropfill.add(fills.pop())             # the left half before ПВ
+        elif fills and amap[fills[-1]].endswith('п') and re.fullmatch(r'[0-7]{5}', aj):
+            if not f[0] and aj not in names:    # the next line starts a word
+                names[aj] = ('D' if f[1] in ('конд', 'конк', 'пам', 'текст') else 'G') + aj
+            dropfill.add(fills.pop())
+        if fills and amap[fills[0]].endswith('п'):  # padding after a left half
+            nl = fills[1] if len(fills) > 1 else j  # the line that starts the word
+            a = amap[nl][:5] if nl != j else aj[:5]
+            if nl != j or not L[j - 1].split('\t')[0]:
+                if a not in names:
+                    names[a] = 'G' + a
+                addlab[nl] = a
+            dropfill.add(fills.pop(0))
+        leftfill.update(fills)
     # labels of this part by address
     lab = {}
     for i, l in enumerate(L, 1):
@@ -425,9 +590,15 @@ def make(name):
         if first and a in newlab:
             if not l.startswith('\t') or a.endswith('п'):
                 sys.exit('%s: cannot label %s: %s' % (name, a, l))
-            if out and out[-1].startswith('\tмода\t,'):
-                out.pop()
-            l = newlab[a] + l
+            k = len(out) - 1            # over the comment block, if any
+            while k >= 0 and out[k].startswith('*'):
+                k -= 1
+            if k >= 0 and out[k].startswith('\tмода\t,'):
+                del out[k]
+            if l.startswith('\tФИНИШ'):     # zeros up to the end: РВС fills them
+                out.append('%s\tпам\t1' % newlab[a])
+            else:
+                l = newlab[a] + l
         if l.startswith('\tФИНИШ'):
             for a2, n in sorted(ekv_own.items()):
                 out.append("%s\tэкв\t'%s'" % (n, a2))
@@ -436,9 +607,34 @@ def make(name):
                 and re.fullmatch(r'[0-7]{5}', a) and plo <= int(a, 8) < phi:
             k = (int(a, 8) - plo) * 6
             t = t8const(int.from_bytes(image[k:k + 6], 'big'))
+            if not t and f[2].startswith("в'"):
+                t = gostconst(image[k:k + 6], any(
+                    "\tконд\tп'" in L[j] for j in (i - 2, i) if 0 <= j < len(L)))
             if t:
                 f[2] = t
                 l = '\t'.join(f)
+        if i in dropfill:
+            continue
+        if i in leftfill:
+            l = '\tмода\t'
+        if i in addlab and l.startswith('\t'):
+            l = final(addlab[i]) + l
+        if i in kword:
+            l = '%s\tконк\tA(%s)' % (l.split('\t')[0], final(kword[i][0]))
+            if not kword[i][1]:
+                l += '\n\tмода\t,ДО ГРАНИЦЫ СЛОВА, КАК В ОРИГИНАЛЕ'
+        if i in kka:
+            ta = kka[i][0]
+            own = plo <= int(ta, 8) < phi
+            if not own:
+                used_ext[ta] = ext[ta]
+            l = l.split('\t')[0] + '\t' + kka[i][1] % (final(ta) if own else ext[ta])
+        if i in msg:
+            ta = msg[i][1]
+            own = plo <= int(ta, 8) < phi
+            if not own:
+                used_ext[ta] = ext[ta]
+            l = '\tдк\t%d,%s' % (msg[i][0], final(ta) if own else ext[ta])
         if i in based:
             t, b, r = based[i]
             if using != (r, b):
@@ -461,7 +657,13 @@ def make(name):
             f = l.split('\t')
             f[2] = '%s(%s)' % (final(setbase[i][0]), setbase[i][1])
             l = '\t'.join(f)
+        # МЕТКА+N that hits a named word is that name
+        l = re.sub(r'(?<![А-Я0-9A-Z])[GD]([0-7]{5})\+(\d+)(?!\d)',
+                   lambda m: names.get('%05o' % (int(m.group(1), 8) + int(m.group(2))),
+                                       m.group(0)), l)
         l = subst(l)
+        if i in keep:               # a number stays a number
+            l = keep[i]
         if i in literal:            # a number stays a number
             f = l.split('\t')
             f[2] = literal[i]
@@ -513,6 +715,7 @@ def make(name):
 
 
 # all sources first, then translate them and link all parts in one РВС run
-for n in sys.argv[1:]:
-    make(n)
-print(run('tools/reasm.pl', *['parts/%s.be' % n for n in sys.argv[1:]]), end='')
+if __name__ == '__main__':
+    for n in sys.argv[1:]:
+        make(n)
+    print(run('tools/reasm.pl', *['parts/%s.be' % n for n in sys.argv[1:]]), end='')

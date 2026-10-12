@@ -9,3 +9,6 @@ BASEREG = {'М3': '70546'}
 ENTRIES = list(globals().get('ENTRIES', [])) + [
     '70056', '70546', '70747', '71174', '71311', '71374', '71430', '71567',
     '71625']
+
+# code found by tools/kondafter.py (unlabelled КОНД after instructions)
+ENTRIES = list(globals().get('ENTRIES', [])) + ['71371', '71372', '71373', '71425', '71426', '71427']

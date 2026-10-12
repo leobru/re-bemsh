@@ -175,3 +175,7 @@ NAMES.update({
  '00561': 'ТКОД',    # ГОСТ -> код БЕМШ, 6 байтов в слове
  '00602': 'ТСДВИГ',  # сдвиг до байта слова ТКОД
 })
+
+# code found by tools/kondafter.py (unlabelled КОНД after instructions)
+ENTRIES = list(globals().get('ENTRIES', [])) + ['01417', '01420', '01421', '01422']
+ENTRIES = list(globals().get('ENTRIES', [])) + ['01211']   # ПБ / адрес

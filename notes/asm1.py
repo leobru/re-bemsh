@@ -103,3 +103,6 @@ BLOCK = {
 # код, не исполнявшийся в трассах (кандидаты tools/codelike.py)
 ENTRIES = list(globals().get('ENTRIES', [])) + [
     '04420', '04426', '04636', '04642']
+
+# code found by tools/kondafter.py (unlabelled КОНД after instructions)
+ENTRIES = list(globals().get('ENTRIES', [])) + ['04607', '04610', '04624', '04625', '04640']

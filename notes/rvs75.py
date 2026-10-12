@@ -31,3 +31,6 @@ BASEREG = {'М2': '40000'}
 # код, не исполнявшийся в трассах (кандидаты tools/codelike.py)
 ENTRIES = list(globals().get('ENTRIES', [])) + [
     '40201', '40206', '40262', '41136', '41145']
+
+# code found by tools/kondafter.py (unlabelled КОНД after instructions)
+ENTRIES = list(globals().get('ENTRIES', [])) + ['40160', '40163', '40205', '40757', '40760', '41165', '41166', '41167', '41650', '41653', '41654', '41655']

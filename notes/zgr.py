@@ -45,3 +45,6 @@ NAMES = dict(globals().get('NAMES', {}))
 NAMES.update({
  '02426': 'ТЛИТЕР',  # литеры по номеру
 })
+
+# code found by tools/kondafter.py (unlabelled КОНД after instructions)
+ENTRIES = list(globals().get('ENTRIES', [])) + ['02765', '02770', '03012', '03167', '03170', '03174']

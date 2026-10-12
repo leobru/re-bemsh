@@ -128,3 +128,6 @@ NAMES.update({
 NAMES.update({
  '06522': 'КАДРОП',   # слово кадра разбора операндов (06512+М12 и далее)
 })
+
+# code found by tools/kondafter.py (unlabelled КОНД after instructions)
+ENTRIES = list(globals().get('ENTRIES', [])) + ['02002', '02003', '02517', '02520', '03772', '03773', '04241']

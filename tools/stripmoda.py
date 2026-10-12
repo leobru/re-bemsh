@@ -5,9 +5,16 @@
 # original is kept as one explicit "мода" so that the code reassembles to the
 # same addresses. A labelled filler before ПВ or an extracode gives its label
 # to that instruction (the label starts the word, BEMSH pads the left half).
+# "кк '66',адрес" becomes "э66 адрес": BEMSH always places Э66 in a left
+# half, so a filler in front of it is dropped as well.
 # Usage: tools/stripmoda.py in.be out.be
 import sys
 L = open(sys.argv[1]).read().split('\n')
+for i, l in enumerate(L):
+    f = l.split('\t')
+    if len(f) > 2 and f[1] == 'кк' and f[2].startswith("'66',"):
+        f[1] = 'э66'; f[2] = f[2][5:]
+        L[i] = '\t'.join(f)
 out = []; kept = 0; i = 0
 while i < len(L):
     f = L[i].rstrip('\t').split('\t')
@@ -28,6 +35,8 @@ while i < len(L):
             # a run of fillers may hold a whole filler word: keep it as is
             out.extend(['\tмода\t,ЗАПОЛНИТЕЛЬ, КАК В ОРИГИНАЛЕ'] * (j - i))
             kept += j - i
+        elif f[0] == '' and op == 'э66':
+            pass
         elif f[0] == '' and not right_only:
             out.append('\tмода\t,ДО ГРАНИЦЫ СЛОВА, КАК В ОРИГИНАЛЕ')
             kept += 1

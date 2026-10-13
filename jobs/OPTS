@@ -89,3 +89,19 @@ mindk: -l -c "ЧТКОМП430040,ПЕЧМАК" jobs/mind.prg <mindz
 pnsh: -k -l -c БЛМАК
 pnshm: -k -l jobs/pnsh.be
 attr2: -l -c ПЕЧМАК jobs/attr2.mac jobs/attr2.prg
+tps: -k -l -c ТПС jobs/asm2.be
+tmhron: -k -l -c "ТПС,ТМХРОН" jobs/expr.be
+btmalf: -k -l -c БТМАЛФ jobs/asm2.be
+pfmod: -k -l -c ПФМОД jobs/asm1.be
+arap/lat: -r -w jobs/arap/lat.deck
+pfgp: -l -c "НАЗ   003000,ПФГП" jobs/zongp.be
+astra: -k -l -c АСТРА jobs/asm1.be
+pchmashk: -k -l -c ПЧМАШК jobs/asm1.be
+latctl: -k -l -c "NAMEAF,ZNAMES430020,LAD   003000,ZPRG  430010     1" jobs/zongp.be
+latmod: -k -l -c "PUNMOD,ZMODL 430030" jobs/asm1.be
+latpun: -l -c "LAD   003000,PUNPRG" jobs/zongp.be
+latw: -f -c WCOMP430040 jobs/mind.mac
+latr: -l -c "RCOMP430040,PRMEXT,DEBPRN      1-9" jobs/mind.prg <latw
+latast: -k -l -c ASTRA jobs/asm1.be
+arap/err: -r -w jobs/arap/err.deck
+pabs: -l -c "БЛМАК,НАЗ   003000,ЗОНГП 430010     1"

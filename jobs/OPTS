@@ -86,3 +86,6 @@ arap/redak: -r -w -1 jobs/arap/redak.deck @arap/1-write
 mind: -l -c ПЕЧМАК jobs/mind.mac jobs/mind.prg
 mindz: -f -c "ЗПКОМП430040,ОТЛПЕЧ      1-9999" jobs/mind.mac
 mindk: -l -c "ЧТКОМП430040,ПЕЧМАК" jobs/mind.prg <mindz
+pnsh: -k -l -c БЛМАК
+pnshm: -k -l jobs/pnsh.be
+attr2: -l -c ПЕЧМАК jobs/attr2.mac jobs/attr2.prg

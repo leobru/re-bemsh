@@ -113,9 +113,10 @@ GOST.update({0o12: '+', 0o13: '-', 0o14: '/', 0o15: ',', 0o16: '.', 0o17: ' ',
 GOST.update({0o40 + i: c for i, c in enumerate('АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЫЬЭЮЯ')})
 
 
-def gostconst(b, adj):
+def gostconst(b, adj, force=False):
     """п'...' for a word of six GOST characters that disbesm6 left octal:
-    with a letter next to another text word, or with two letters."""
+    with a letter next to another text word, or with two letters;
+    force - the word is known to be text (follows a TEXTCALLS call)."""
     end = ''
     if b.count(0o231) == 1:         # the end-of-text marker: п'...0' plus в'231'
         k = b.index(0o231)
@@ -124,7 +125,7 @@ def gostconst(b, adj):
     if not all(x in GOST for x in b):
         return None
     n = sum(x >= 0o40 for x in b)
-    if n >= 2 or adj and (n == 1 or end):
+    if force or n >= 2 or adj and (n == 1 or end):
         return "п'%s'%s" % (''.join(GOST[x] for x in b), end)
 
 
@@ -656,6 +657,14 @@ def make(name):
                                   int.from_bytes(image[k + 6:k + 12], 'big'))
     # CHARS = ['ааааа-ббббб', 'ааааа', ...]: tables of single characters
     chars = [tuple((x.split('-') * 2)[:2]) for x in notes.get('CHARS', [])]
+    # words of text after the calls listed in TEXTCALLS (see tools/parts.py)
+    textw = set()
+    tcalls = {int(x, 8): fn for x, fn in notes.get('TEXTCALLS', {}).items()}
+    for wi in range(len(image) // 6 if tcalls else 0):
+        w = int.from_bytes(image[wi * 6:wi * 6 + 6], 'big')
+        if ((w >> 24) & 0o3700000) == 0o3100000 and (w >> 24) & 0o77777 in tcalls:
+            textw.update('%05o' % (plo + wi + 1 + j)
+                         for j in range(tcalls[(w >> 24) & 0o77777](w & 0xffffff)))
     using = None                    # (register, base) of the УПОТР in effect
     out = []
     for i, l in enumerate(L, 1):
@@ -732,7 +741,8 @@ def make(name):
                 t = "е'%s'" % notes['REALS'][a]
             if not t and f[2].startswith("в'"):
                 t = gostconst(image[k:k + 6], any(
-                    "\tконд\tп'" in L[j] for j in (i - 2, i) if 0 <= j < len(L)))
+                    "\tконд\tп'" in L[j] for j in (i - 2, i) if 0 <= j < len(L)),
+                    a in textw)
             if t:
                 f[2] = t
                 l = '\t'.join(f)

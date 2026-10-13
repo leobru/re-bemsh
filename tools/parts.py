@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Build the parts listed in parts.txt: parts/NAME.bin (zones concatenated),
-# parts/NAME.cov (union of traces/*.cov/ZZZZ.cov for its zones) and
+# parts/NAME.cov (union of traces/*.cov/ZZZZ.cov and traces/*/*.cov/ZZZZ.cov for its zones) and
 # parts/NAME.dis (raw disbesm6 -s output, module name from parts.txt).
 # Usage: tools/parts.py [name ...]     (default: all)
 import glob, os, re, subprocess, sys
@@ -67,7 +67,7 @@ for l in open('parts.txt'):
             f.write(open('zones/%s.bin' % z, 'rb').read())
     cov = set()
     for z in zones:
-        for c in glob.glob('traces/*.cov/%s.cov' % z):
+        for c in glob.glob('traces/*.cov/%s.cov' % z) + glob.glob('traces/*/*.cov/%s.cov' % z):
             cov.update(x.split(':')[0] for x in open(c))
     with open('parts/%s.cov' % name, 'w') as f:
         f.writelines('%s: L\n' % a for a in sorted(cov))

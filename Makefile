@@ -3,7 +3,6 @@ DISBESM6 ?= $(HOME)/git/leobru/dispak-tools/disbesm6
 export DISBESM6
 PARTS := $(shell grep -v '^\#' parts.txt | awk '{print $$1}')
 ZONES := $(shell grep -v '^\#' parts.txt | awk '{for (i = 4; i <= NF; i++) print $$i}')
-JOBS  := avmd spe66 macros inmac errmac blmak asm1 zongp zgr rvs75
 
 all: check
 
@@ -21,28 +20,13 @@ jobs/spe66.b6:
 	tools/job.pl $(HOME)/git/dispak/dispak/spe66.b6 > $@
 jobs/macros.b6:
 	tools/job.pl $(HOME)/git/dispak/dispak/macros.b6 > $@
-jobs/inmac.b6: jobs/inmac.be
-	tools/job.pl -k -l -c ПЕЧМАК $< > $@
-jobs/errmac.b6: jobs/errmac.be
-	tools/job.pl -k -l -c ПЕЧМАК $< > $@
-jobs/blmak.b6: jobs/inmac.be
-	tools/job.pl -k -l -c БЛМАК $< > $@
-# предпроход РЕДАК: сначала ARCH=файл tools/run.sh с колодой
-# jobs/arap/1-write.deck (job.pl -r -w), потом этот прогон с тем же ARCH
-jobs/redak.b6: jobs/arap/redak.deck
-	tools/job.pl -r -w -1 $< > $@
-jobs/colon.b6: jobs/colon.be
-	tools/job.pl -l $< > $@
-jobs/colonb.b6: jobs/colon.be
-	tools/job.pl -k -l -c БЛМАК $< > $@
-jobs/dkb.b6: jobs/dkb.be
-	tools/job.pl -k -l -c БЛМАК $< > $@
-jobs/asm1.b6: jobs/asm1.be
-	tools/job.pl -k -l -z $< > $@
-jobs/zongp.b6: jobs/zongp.be
-	tools/job.pl -l -c "НАЗ   003000,ЗОНГП 430010     1" $< > $@
-jobs/zgr.b6: jobs/zgr.be
-	tools/job.pl -l -z -c "ЗОНМЕТ430020,НАЗ   004000,ЗОНГП 430010     2" $< > $@
+# остальные задания - по jobs/OPTS (параметры tools/job.pl на каждое имя);
+# "make jobs" пересобирает все, у которых изменился текст
+jobs:
+	tools/mkjobs.py
+jobs/%.b6: jobs/OPTS FORCE
+	tools/mkjobs.py $*
+FORCE:
 # РВС 10/75 (зона 0144) отдельной задачей: колода jobs/rvs75.job, модуль -
 # из прогона jobs/zgr.b6 (ЗОНМОД)
 jobs/rvs75.b6: jobs/rvs75.job
@@ -51,7 +35,9 @@ traces/rvs75.ev: jobs/rvs75.b6 jobs/zgr.b6
 	@mkdir -p traces
 	tools/run.sh jobs/zgr.b6 traces/rvs75.2222 > /dev/null
 	IN2222=traces/rvs75.2222 tools/trace.sh $< traces/rvs75.txt | tools/phases.py - traces/rvs75.cov > $@
-traces: $(addprefix traces/,$(addsuffix .ev,$(JOBS)))
+# все трассы: задания jobs/OPTS и три внешних (tools/cover.py), РВС 10/75
+traces: jobs/avmd.b6 jobs/spe66.b6 jobs/macros.b6 traces/rvs75.ev
+	tools/cover.py
 traces/%.ev: jobs/%.b6
 	@mkdir -p traces
 	tools/trace.sh $< traces/$*.txt | tools/phases.py - traces/$*.cov > $@
@@ -73,6 +59,9 @@ src: source.txt
 	tools/t8text.py source.txt > source.utf8
 	tools/srcapply.py source.utf8 mred74 mred2
 
+# Покрытие кода частей всеми заданиями (трассы обновляются по надобности)
+cover: traces
+
 # Обратная сборка каждой части и побайтное сравнение
 check:
 	@tools/reasm.pl $(addprefix parts/,$(addsuffix .be,$(PARTS)))
@@ -80,4 +69,4 @@ check:
 clean:
 	rm -f 2222 parts/*.new parts/*.b6 parts/*.lst
 
-.PHONY: all zones traces parts be src check clean
+.PHONY: all zones traces parts be src check clean jobs cover

@@ -9,7 +9,7 @@ parts/*.new
 parts/*.b6
 parts/*.lst
 jobs/*.b6
-jobs/dir/*.b6
+jobs/*/*.b6
 notes/__pycache__/
 snap/
 phase/
@@ -21,3 +21,4 @@ macros.be.lst
 parts/*.sym
 source.txt
 source.utf8
+tools/__pycache__/

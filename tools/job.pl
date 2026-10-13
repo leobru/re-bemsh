@@ -1,8 +1,9 @@
 #!/usr/bin/env perl
 # Make a БЕМШ translation job (same passport and loader as re-dispak/asm.pl).
-# Usage: tools/job.pl [-k] [-z] [-l] [-w] [-r] [-1] [-c КАРТА,...] src > job.b6
+# Usage: tools/job.pl [-k] [-z] [-l] [-w] [-r] [-1] [-f] [-c КАРТА,...] src... > job.b6
 #   src  - a .be text, or a .b6 job: then only its ВВД$$$..КНЦ$$$ part is used
-#          and taken as is (its own control cards);
+#          and taken as is (its own control cards); several texts are joined;
+#   -f   - add a ФИНИШ line after the text (for a file of macro definitions);
 #   -r   - src is a raw deck of control cards and text, one card per line
 #          (for АРАП: archive cards, ВВД$$$ ... КНЦ$$$);
 #   -w   - tape 42 (2099: macro library and АРАП archive) writable;
@@ -18,10 +19,14 @@ use open ':std', ':encoding(UTF-8)';
 use Getopt::Std;
 use Encode qw(decode);
 @ARGV = map { decode("UTF-8", $_) } @ARGV;
-getopts('kzlwr1c:', \%o) && @ARGV == 1 or die "Usage: job.pl [-k] [-z] [-l] [-w] [-r] [-1] [-c cards] src\n";
-open(F, $ARGV[0]) or die "Cannot open $ARGV[0]\n";
-my @src = <F>;
-close F;
+getopts('kzlwr1fc:', \%o) && @ARGV >= 1 or die "Usage: job.pl [-k] [-z] [-l] [-w] [-r] [-1] [-f] [-c cards] src...\n";
+my @src;
+for my $f (@ARGV) {
+    open(F, $f) or die "Cannot open $f\n";
+    push @src, <F>;
+    close F;
+}
+push @src, " ФИНИШ\n" if $o{f};
 chomp @src;
 my $t42 = $o{w} ? '2099-ЗП' : '2099';
 my $t43 = $o{1} ? 67 : 43;

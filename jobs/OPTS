@@ -1,0 +1,88 @@
+# Задания-опыты: имя: параметры tools/job.pl [исходники] [<задание]
+# (исходник - jobs/ИМЯ.be, если не указан; <задание - брать 2222 после
+# него). Собирает tools/mkjobs.py, покрытие считает tools/cover.py.
+aconst: -k -l -z
+asm1: -k -l -z
+asm2: -k -l
+attr: -k -l -c ПЕЧМАК
+base: -k -l
+base2: -k -l
+blmak: -k -l -c БЛМАК jobs/inmac.be
+colon: -l
+colonb: -k -l -c БЛМАК jobs/colon.be
+const: -k -l
+ctl: -k -l -c ПЕЧМАК
+dkb: -k -l -c БЛМАК
+errm2: -l -c ПЕЧМАК
+errmac: -k -l -c ПЕЧМАК
+expr: -k -l
+inmac: -k -l -c ПЕЧМАК
+komp: -c ЗПКОМП430040
+komperr: -c ЗПКОМП430040
+rich: -k -l -c ПЕЧМАК
+srch: -k -l -c ПЕЧМАК
+sub: -k -l -c ПЕЧМАК
+sys: -k -l -c ПЕЧМАК
+zgr: -l -z -c "ЗОНМЕТ430020,НАЗ   004000,ЗОНГП 430010     2"
+zongp: -l -c "НАЗ   003000,ЗОНГП 430010     1"
+dir/GВLА: -k -l
+dir/GВLВ: -k -l
+dir/GВLС: -k -l
+dir/LСLА: -k -l
+dir/LСLВ: -k -l
+dir/LСLС: -k -l
+dir/SRСН: -k -l
+dir/SЕТА: -k -l
+dir/SЕТВ: -k -l
+dir/SЕТС: -k -l
+dir/SМОDЕ: -k -l
+dir/АGО: -k -l
+dir/АIF: -k -l
+dir/АNОР: -k -l
+dir/АСТR: -k -l
+dir/КОПИР: -k -l
+dir/МNОТЕ: -k -l
+dir/МЕХIТ: -k -l
+dir/СОРY: -k -l
+# Макросы jobs/mall.mac - все команды ГС: интерпретация (mall), трасса
+# ОТЛПЕЧ (mallo), компиляция (mallz) и вызовы из библиотеки (mallk, mallko)
+mall: -l -c ПЕЧМАК jobs/mall.mac jobs/mall.prg
+mallo: -l -c "ПЕЧМАК,ОТЛПЕЧ      1-9999" jobs/mall.mac jobs/mall.prg
+mallz: -f -c "ЗПКОМП430040" jobs/mall.mac
+mallzo: -f -c "ЗПКОМП430040,ОТЛПЕЧ      1-9999" jobs/mall.mac
+mallk: -l -c "ЧТКОМП430040,ПЕЧМАК" jobs/mall.prg <mallz
+mallko: -l -c "ЧТКОМП430040,ПЕЧМАК,ОТЛПЕЧ      1-9999" jobs/mall.prg <mallz
+# Ошибки макромашины на тех же макросах: интерпретация и библиотека
+merr: -l -c ПЕЧМАК jobs/mall.mac jobs/merr.mac jobs/merr.prg
+merrz: -f -c ЗПКОМП430040 jobs/mall.mac jobs/merr.mac
+merrk: -l -c "ЧТКОМП430040,ПЕЧМАК" jobs/merr.prg <merrz
+merro: -l -c "ПЕЧМАК,ОТЛПЕЧ      1-325" jobs/mall.mac jobs/merr.mac jobs/merr.prg
+# ОТЛПЕЧ с именем: ОШИБКИ - трасса макроса после ошибки, БПЕЧМО - без
+# печати макроопределений, третья литера Ш - отладочная печать макроредактора
+merrosh: -l -c "ПЕЧМАК,ОТЛПЕЧОШИБКИ1-325" jobs/mall.mac jobs/merr.mac jobs/merr.prg
+mallb: -l -c "ПЕЧМАК,ОТЛПЕЧБПЕЧМО1-9999" jobs/mall.mac jobs/mall.prg
+otlr: -l -c "ПЕЧМАК,ОТЛПЕЧ  Ш   1-99" jobs/rich.be
+# Деление на ноль в SЕТА: авост, макромашина печатает без конца (BUGS.md)
+div0: -l -c ПЕЧМАК !5
+# &SNDX: переносы в десятичном счётчике вызовов (10, 100, 1000 вызовов)
+msndx: -l -c ПЕЧМАК jobs/mall.mac jobs/msndx.prg
+# Большая библиотека: вторая страница кода (зона +7), повторные определения
+mbigz: -f -c ЗПКОМП430040 jobs/mall.mac jobs/merr.mac jobs/mall.mac
+# АРАП: колоды по порядку на одном архиве (@ - архив после задания)
+arap/1-write: -r -w jobs/arap/1-write.deck
+arap/2-trn: -r -w jobs/arap/2-trn.deck @arap/1-write
+arap/3-edit-trn: -r -w jobs/arap/3-edit-trn.deck @arap/2-trn
+arap/4-del-lst-pap: -r -w jobs/arap/4-del-lst-pap.deck @arap/3-edit-trn
+arap/5-unchap-nzhizn: -r -w jobs/arap/5-unchap-nzhizn.deck @arap/4-del-lst-pap
+arap/6-append: -r -w jobs/arap/6-append.deck @arap/5-unchap-nzhizn
+arap/7-dbl-sdv: -r -w jobs/arap/7-dbl-sdv.deck @arap/6-append
+arap/8-zpb-zps-zpu: -r -w jobs/arap/8-zpb-zps-zpu.deck @arap/7-dbl-sdv
+arap/9-novml: -r -w jobs/arap/9-novml.deck @arap/8-zpb-zps-zpu
+arap/edit: -r -w jobs/arap/edit.deck
+arap/ogl: -r -w jobs/arap/ogl.deck @arap/edit
+arap/redak: -r -w -1 jobs/arap/redak.deck @arap/1-write
+# Присваивание элементу массива и '&SNDX' ЕQ '': интерпретация и библиотека
+# дают разное (BUGS.md, 9 и 12)
+mind: -l -c ПЕЧМАК jobs/mind.mac jobs/mind.prg
+mindz: -f -c "ЗПКОМП430040,ОТЛПЕЧ      1-9999" jobs/mind.mac
+mindk: -l -c "ЧТКОМП430040,ПЕЧМАК" jobs/mind.prg <mindz

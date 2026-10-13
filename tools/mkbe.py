@@ -366,10 +366,14 @@ def make(name):
                     plo <= cur[r] + v < phi:
                 based[i] = ('%05o' % (cur[r] + v), '%05o' % cur[r], r)
         labs0 = dis_labels(name)
+        # a target of a jump through the base register is code: G, as the
+        # labels that disbesm6 gives to jump targets
+        jumps = {based[i][0] for i in based if L[i - 1].split('\t')[1] in
+                 ('пб', 'пе', 'по', 'пв', 'пвл', 'пио', 'пино', 'цикл')}
         for t, b, r in list(based.values()) + [(t, t, r) for t, r in setbase.values()]:
             for a in (t, b):
                 if a not in names and a not in labs0 and int(a, 8) != (plo or 1):
-                    names[a] = 'D' + a
+                    names[a] = ('G' if a in jumps else 'D') + a
     # МЕТКА+N(Мr) -> the label of the exact word: the start of a table, or
     # the address loaded by УИА. Left as it is when the index is negative
     # (the register is loaded with a negative number just before, or
@@ -777,7 +781,7 @@ def make(name):
             f[2] = '%s(%s)' % (final(setbase[i][0]), setbase[i][1])
             l = '\t'.join(f)
         # МЕТКА+N that hits a named word is that name
-        l = re.sub(r'(?<![А-Я0-9A-Z])[GD]([0-7]{5})\+(\d+)(?!\d)',
+        l = re.sub(r'(?<![А-Я0-9A-Z])[GD]([0-7]{5})([+-]\d+)(?!\d)',
                    lambda m: names.get('%05o' % (int(m.group(1), 8) + int(m.group(2))),
                                        m.group(0)), l)
         l = subst(l)

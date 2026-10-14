@@ -105,3 +105,10 @@ latr: -l -c "RCOMP430040,PRMEXT,DEBPRN      1-9" jobs/mind.prg <latw
 latast: -k -l -c ASTRA jobs/asm1.be
 arap/err: -r -w jobs/arap/err.deck
 pabs: -l -c "БЛМАК,НАЗ   003000,ЗОНГП 430010     1"
+biggs: -l
+arap/e-vne: -r -w jobs/arap/e-vne.deck
+arap/e-noname: -r -w jobs/arap/e-noname.deck
+arap/e-nokvch: -r -w jobs/arap/e-nokvch.deck
+arap/forms: -r -w jobs/arap/forms.deck
+arap/long-zps: -r -w jobs/arap/long-zps.deck
+arap/zonmet: -r -w jobs/arap/zonmet.deck

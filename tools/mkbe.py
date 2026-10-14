@@ -27,8 +27,19 @@
 #            УПОТР БАЗА(Мr), and the load of the base - УИА БАЗА(Мr). УПОТР
 #            is switched off (ОТМЕН (Мr)) before a command that addresses
 #            a label of the part directly; missing labels Dааааа are added;
+#   BASEENTRY = {'М14': 'М15'}          with BASEREG: a procedure is called
+#            with its entry address in М15 and takes it as the base by
+#            УИИ М14(М15); the entry is the nearest prologue above
+#            (ЗП n(М17) / СЧИ М13);
 #   A КОНД word that is text in the 8-bit code of БЕМШ is written as
 #   КОНД Т'...' (see t8const).
+#   The first information word of Э64 (the word that an Э64 of the part
+#   points to) is written as the pair ДК 0,start(Мr) / ДК 0,end(Мr);
+#   Labels Gааааа/Dааааа that nothing refers to are dropped, unless
+#   the label makes a command start a new word (after a word with an empty
+#   right half) or stands in place of a filler МОДА;
+#   NUMBERS = ['24450', ...]            КОНД words that are numbers, not the
+#            text п'...' that disbesm6 shows: written as в'...';
 #   NOTADDR = ['76001', ...]            literal values that are numbers (loop
 #            counters), not addresses in a part of USES: left as they are;
 #   TOP    = '''* ...'''                block comment after the СТАРТ lines;
@@ -345,13 +356,20 @@ def make(name):
         fmap = fieldmap(plain + '.lst')
         plo, phi = ranges()[name]
         cur = {r: (int(b, 8) if b else None) for r, b in notes['BASEREG'].items()}
+        entry = None
         for i, l in enumerate(L, 1):
             f = l.split('\t')
             m = re.fullmatch(r'(.*)\((М\d+)\)', f[2]) if len(f) >= 3 else None
             if len(f) >= 3 and f[1] == 'уи' and f[2] in cur:
                 cur[f[2]] = None
+            if len(f) >= 3 and re.fullmatch(r'\d+\(М17\)', f[2]) and f[1] == 'зп' and \
+                    i < len(L) and L[i].split('\t')[1:3] == ['счи', 'М13']:
+                entry = int(amap[i][:5], 8)         # prologue of a procedure
             if len(f) >= 3 and f[1] == 'уии' and f[2].split('(')[0] in cur:
-                cur[f[2].split('(')[0]] = None      # Мr := another register
+                r = f[2].split('(')[0]
+                cur[r] = None                       # Мr := another register
+                if f[2] == '%s(%s)' % (r, notes.get('BASEENTRY', {}).get(r)):
+                    cur[r] = entry                  # ... that holds the entry
                 continue
             if not m or m.group(2) not in cur or \
                     f[1] in ('кк', 'ккб', 'дк', 'дкб', 'конк', 'конд', 'текст'):
@@ -361,8 +379,9 @@ def make(name):
                 cur[r] = v if f[1] == 'уиа' and v is not None and plo <= v < phi else None
                 if cur[r] is not None:
                     setbase[i] = ('%05o' % v, r)
-            elif f[1] in REGDEST:
-                pass                # the register is not an index here
+            elif f[1] in REGDEST or f[1] in ('сда', 'слпа', 'вчпа'):
+                pass                # the register is not an index here, or
+                                    # the address is a shift, not an address
             elif cur[r] is not None and m.group(1) and v and v < 0o40000 and \
                     plo <= cur[r] + v < phi:
                 based[i] = ('%05o' % (cur[r] + v), '%05o' % cur[r], r)
@@ -375,6 +394,32 @@ def make(name):
             for a in (t, b):
                 if a not in names and a not in labs0 and int(a, 8) != (plo or 1):
                     names[a] = ('G' if a in jumps else 'D') + a
+    # The first information word of Э64 is a pair ДК 0,start(R) / ДК 0,end(R)
+    # (addresses of the text to print): the words that Э64 of this part
+    # point to are written so, with labels for the addresses inside the part
+    e64 = set()
+    plo, phi = ranges()[name]
+    labs0 = dis_labels(name)
+    img64 = open('parts/%s.bin' % name, 'rb').read()
+    for i, l in enumerate(L, 1):
+        f = l.split('\t')
+        if len(f) < 3 or f[1] != 'Э64':
+            continue
+        m = re.fullmatch(r'[GD]([0-7]{5})', f[2])
+        t = based[i][0] if i in based else m.group(1) if m else None
+        if t is None or not plo <= int(t, 8) < phi:
+            continue
+        w = int.from_bytes(img64[(int(t, 8) - plo) * 6:(int(t, 8) - plo) * 6 + 6], 'big')
+        if (w >> 24) & 0o1700000 or w & 0o1700000 or not w:
+            continue                # not ДК 0 (or filled in at run time)
+        e64.add(t)
+        tl = [x for j, x in enumerate(L, 1) if amap.get(j, '')[:5] == t]
+        if any(x.split('\t')[1:2] == ['кк'] and x.split('\t')[2].startswith('0,') for x in tl):
+            continue                # already in halves: the operands stay
+        for h in (w >> 24, w & 0xffffff):
+            x = '%05o' % (h & 0o77777)
+            if not h >> 20 and plo <= h & 0o77777 < phi and x not in names and x not in labs0:
+                names[x] = 'D' + x
     # МЕТКА+N(Мr) -> the label of the exact word: the start of a table, or
     # the address loaded by УИА. Left as it is when the index is negative
     # (the register is loaded with a negative number just before, or
@@ -724,7 +769,23 @@ def make(name):
                     errskip.add(n2)
                 continue
         f = l.split('\t')
-        if first and len(f) >= 3 and f[1] == 'конд' and not f[2].startswith('A(') \
+        if a and a[:5] in e64 and len(f) >= 3 and f[1] == 'кк' and f[2].startswith('0,'):
+            f[1] = 'дк'             # the operand is already right
+            l = '\t'.join(f)
+        elif a and a[:5] in e64 and len(f) >= 3 and f[1] != 'пам':
+            w = int.from_bytes(image[(int(a[:5], 8) - plo) * 6:(int(a[:5], 8) - plo) * 6 + 6], 'big')
+            hs = [w & 0xffffff] if a.endswith('п') else [w >> 24] if f[1] != 'конд' else [w >> 24, w & 0xffffff]
+            for n, h in enumerate(hs):
+                x = '%05o' % (h & 0o77777)
+                t = final(x) if plo <= h & 0o77777 < phi else "'%o'" % (h & 0o77777)
+                out.append('%s\tдк\t0,%s%s' % (f[0] if n == 0 else '', t,
+                                                '(М%o)' % (h >> 20) if h >> 20 else ''))
+            continue
+        if first and len(f) >= 3 and f[1] == 'конд' and a in notes.get('NUMBERS', ()):
+            w = int.from_bytes(image[(int(a, 8) - plo) * 6:(int(a, 8) - plo) * 6 + 6], 'big')
+            f[2] = "в'%05o'" % w
+            l = '\t'.join(f)
+        elif first and len(f) >= 3 and f[1] == 'конд' and not f[2].startswith('A(') \
                 and re.fullmatch(r'[0-7]{5}', a) and plo <= int(a, 8) < phi:
             k = (int(a, 8) - plo) * 6
             def strict(j):          # is source line j a text word by itself
@@ -880,6 +941,33 @@ def make(name):
             merged.append(l)
     flush()
     out = merged
+    # labels Gааааа/Dааааа that nothing refers to (hapaxes) are dropped,
+    # except those that start a new word after a command in the left half
+    # (without the label the next command would take the right half)
+    # (a filler МОДА that the label replaced counts as an empty half)
+    halves = {a for i, a in amap.items() if not L[i - 1].startswith('\tмода\t,')}
+    # (КОНД, ПАМ, ТЕКСТ start a new word anyway)
+    whole = {a for i, a in amap.items() if L[i - 1].split('\t')[1:2] in
+             (['конд'], ['пам'], ['текст'])}
+    align = {a for a in halves if re.fullmatch(r'[0-7]{5}', a) and a not in whole and
+             '%05o' % (int(a, 8) - 1) in halves and '%05o' % (int(a, 8) - 1) + 'п' not in halves}
+    # and one that took the place of a filler МОДА before its line
+    align |= {a[:5] for i, a in amap.items() if i >= 2 and L[i - 2].startswith('\tмода\t,')}
+    refs = set()
+    for l in out:
+        f = l.split('\t')
+        if not l.startswith('*') and len(f) >= 3:
+            refs.update(re.findall(r'(?<![А-ЯA-Z0-9])[GD][0-7]{5}(?![0-7])', f[2]))
+    hapax = []
+    for l in out:
+        f = l.split('\t')
+        if re.fullmatch(r'[GD][0-7]{5}', f[0]) and f[0] not in refs and f[0][1:] not in align:
+            if len(f) >= 2 and f[1] == 'экв':
+                continue
+            f[0] = ''
+            l = '\t'.join(f)
+        hapax.append(l)
+    out = hapax
     # equal КОНД words in a row: КОНД (count)value
     rep = []
     for l in out:

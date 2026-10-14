@@ -135,7 +135,7 @@ def code(name):
         if m.group(3).strip():
             lab, base = m.group(3).strip(), a
         # a word that starts with КОНК, КК or ДК is data in command format
-        if ' ' in m.group(2) and m.group(4) not in ('КОНК', 'КК', 'ДК', 'ДКБ'):
+        if ' ' in m.group(2) and m.group(4) not in ('КОНК', 'КОНД', 'КК', 'ДК', 'ДКБ'):
             res[a] = (lab + ('+%o' % (a - base) if a != base else '')) if lab else ''
     return res
 

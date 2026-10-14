@@ -18,6 +18,9 @@
 #   (traces/PREV.2222, made by tools/run.sh), a job marked "@PREV" - from
 #   the archive 2099 left by PREV (traces/PREV.2099, the whole chain of
 #   "@" jobs before it is run by tools/run.sh with ARCH).
+#   jobs/dubna/*.dub - jobs of the Dubna monitor system, traced by
+#             tools/dubtrace.sh (BEMSH in its mode 1122 under the Dubna
+#             simulator).
 #   -d      - list the executed addresses that the source shows as data
 #             (candidates for ENTRIES in notes/PART.py).
 # rvs75 is traced by "make traces/rvs75.ev" (it needs the object modules).
@@ -97,6 +100,20 @@ for b6 in sorted(glob.glob('jobs/*.b6') + glob.glob('jobs/*/*.b6')):
             os.remove(f)
         subprocess.run(env + 'tools/trace.sh "%s" "traces/%s.txt" | tools/phases.py - "%s" '
                        '> "traces/%s.ev" 2>/dev/null' % (b6, n, cov, n), shell=True)
+        os.utime(cov)
+        print('трасса', n, file=sys.stderr)
+
+# jobs of the Dubna monitor system (*bemsh under the Dubna simulator, BEMSH
+# mode 1122): tools/dubtrace.sh, tape 30 = 2048 from zone 0144
+for job in sorted(glob.glob('jobs/dubna/*.dub')):
+    n = os.path.splitext(os.path.relpath(job, 'jobs'))[0]
+    cov = 'traces/%s.cov' % n
+    if redo or not os.path.isdir(cov) or os.path.getmtime(cov) < os.path.getmtime(job):
+        os.makedirs(cov, exist_ok=True)
+        for f in glob.glob(cov + '/*.cov'):
+            os.remove(f)
+        subprocess.run('tools/dubtrace.sh "%s" "traces/%s.txt" | ZOFS=144 tools/phases.py - "%s" '
+                       '> "traces/%s.ev" 2>/dev/null' % (job, n, cov, n), shell=True)
         os.utime(cov)
         print('трасса', n, file=sys.stderr)
 

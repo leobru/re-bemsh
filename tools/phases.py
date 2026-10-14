@@ -5,12 +5,16 @@
 # attributes every executed user-mode address to the zone in its page.
 #
 # Usage: tools/phases.py trace.log|- [covdir]
+#   ZOFS=octal - zone of 2048 = (zone of tape 30 + ZOFS) & 07777; 06200 for
+#   dispak, 0144 for the Dubna simulator (tape 739 = 2048 from zone 0144,
+#   tools/dubtrace.sh).
 #   prints the load events (where, page <- zone) in order;
 #   with covdir, writes covdir/ZZZZ.cov ("ааааа: L R" lines, disbesm6 --trace
 #   format) for every zone that had code executed in it.
 import re, sys, os
 from collections import defaultdict
 
+ZOFS = int(os.environ.get('ZOFS', '6200'), 8)
 page = {}                       # page -> zone of tape 30 (or None)
 cov = defaultdict(lambda: defaultdict(set))
 events = []
@@ -43,7 +47,7 @@ for l in src:
             if unit == 0o30 and rd:
                 page[p] = zone
                 events.append('%05o: лист %02o (%05o) <- зона 30:%04o (2048:%04o)'
-                              % (addr, p, p << 10, zone, (zone + 0o6200) & 0o7777))
+                              % (addr, p, p << 10, zone, (zone + ZOFS) & 0o7777))
             elif rd:
                 page[p] = None
                 events.append('%05o: лист %02o <- устр %02o зона %04o' % (addr, p, unit, zone))
@@ -53,7 +57,7 @@ print('\n'.join(events))
 if len(sys.argv) > 2:
     os.makedirs(sys.argv[2], exist_ok=True)
     for z, a in cov.items():
-        with open(os.path.join(sys.argv[2], '%04o.cov' % ((z + 0o6200) & 0o7777)), 'w') as f:
+        with open(os.path.join(sys.argv[2], '%04o.cov' % ((z + ZOFS) & 0o7777)), 'w') as f:
             for x in sorted(a):
                 f.write('%05o: %s\n' % (x, ''.join(sorted(a[x]))))
-        print('2048:%04o: %d адресов' % ((z + 0o6200) & 0o7777, len(a)), file=sys.stderr)
+        print('2048:%04o: %d адресов' % ((z + ZOFS) & 0o7777, len(a)), file=sys.stderr)

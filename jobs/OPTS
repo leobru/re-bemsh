@@ -112,3 +112,5 @@ arap/e-nokvch: -r -w jobs/arap/e-nokvch.deck
 arap/forms: -r -w jobs/arap/forms.deck
 arap/long-zps: -r -w jobs/arap/long-zps.deck
 arap/zonmet: -r -w jobs/arap/zonmet.deck
+zgrexp: -l -c "НАЗ   000100,ЗОНГП 430010     1"
+zgrdiv: -l -c "НАЗ   000100,ЗОНГП 430010     1"

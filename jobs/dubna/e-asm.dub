@@ -1,0 +1,13 @@
+*name e-asm
+*bemsh
+ввд$$$
+prog    старт   512
+        сч      нет
+        финиш
+квч$$$
+трн$$$
+0-0
+кнц$$$
+*main prog
+*execute
+*end file

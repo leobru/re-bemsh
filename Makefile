@@ -2,7 +2,7 @@
 DISBESM6 ?= $(HOME)/git/leobru/dispak-tools/disbesm6
 export DISBESM6
 PARTS := $(shell grep -v '^\#' parts.txt | awk '{print $$1}')
-ZONES := $(shell grep -v '^\#' parts.txt | awk '{for (i = 4; i <= NF; i++) print $$i}')
+ZONES := $(sort $(shell grep -v '^\#' parts.txt | awk '{for (i = 4; i <= NF; i++) if ($$i !~ /:/) print $$i}'))
 
 all: check
 
@@ -78,7 +78,12 @@ cover: traces
 check:
 	@tools/reasm.pl $(addprefix parts/,$(addsuffix .be,$(PARTS)))
 
+# Библиотека УПД из подлинных модулей тома 2148 (ФУНТМ2, СЛЕД, ФУНДОС) вместо
+# их .be; МРЕД24 и ЖУРНАЛ - из .be (на томах их нет)
+updcheck:
+	@tools/reasm.pl -m funtm2=2148:1013 -m sled=2148:1014 -m fundos=2148:1016
+
 clean:
 	rm -f 2222 parts/*.new parts/*.b6 parts/*.lst
 
-.PHONY: all zones traces parts be src check clean jobs cover
+.PHONY: all zones traces parts be src check updcheck clean jobs cover

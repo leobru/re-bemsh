@@ -5,7 +5,7 @@
 # including ПВЛ parameters (second return addresses).
 # Usage: tools/errsites.py   (run after make be; codes are octal)
 import re
-PARTS = ['mred2', 'mred24', 'mred74']
+PARTS = ['mred2', 'mred24', 'upd1', 'funtm2', 'sled', 'fundos', 'mred74']
 
 def lines(name):
     """(address, label, op, operand) of parts/NAME.be.lst source lines."""

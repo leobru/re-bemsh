@@ -89,23 +89,24 @@ def name(v):
             s += '?'
     return s.rstrip()
 
-verbose = '-v' in sys.argv
-for src in [a for a in sys.argv[1:] if a != '-v']:
-    w = words(src)
-    nz = len(w) // 1024
-    print('%s: %d зон' % (src, nz))
-    for z in range(nz):
-        r = check(w, z)
-        if r is None:
-            continue
-        h = chunk(w, z, 0)
-        if isinstance(r, str):
-            if verbose:
-                print('  %04o  не модуль: %s' % (z, r))
-            continue
-        warn, n = r
-        print('  %04o  %d зон  %-6s  СТАРТ %05o  ДИАП %05o-%05o  ДЛИНА %05o  '
-              'кусков %d/%d/%d/%d%s'
-              % (z, (n + 84) // 85, name(h[1]), h[2], h[3], h[4], h[6], h[5],
-                 pair(h[7])[0], pair(h[8])[0], pair(h[9])[0],
-                 '  ' + ', '.join(warn) if warn else ''))
+if __name__ == '__main__':
+    verbose = '-v' in sys.argv
+    for src in [a for a in sys.argv[1:] if a != '-v']:
+        w = words(src)
+        nz = len(w) // 1024
+        print('%s: %d зон' % (src, nz))
+        for z in range(nz):
+            r = check(w, z)
+            if r is None:
+                continue
+            h = chunk(w, z, 0)
+            if isinstance(r, str):
+                if verbose:
+                    print('  %04o  не модуль: %s' % (z, r))
+                continue
+            warn, n = r
+            print('  %04o  %d зон  %-6s  СТАРТ %05o  ДИАП %05o-%05o  ДЛИНА %05o  '
+                  'кусков %d/%d/%d/%d%s'
+                  % (z, (n + 84) // 85, name(h[1]), h[2], h[3], h[4], h[6], h[5],
+                     pair(h[7])[0], pair(h[8])[0], pair(h[9])[0],
+                     '  ' + ', '.join(warn) if warn else ''))

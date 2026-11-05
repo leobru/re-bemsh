@@ -1,9 +1,12 @@
 #!/usr/bin/env perl
 # Reassemble the parts of БЕМШ and compare them with the original binaries.
 #
-# Usage: tools/reasm.pl [-v] [-t] parts/NAME[.variant].be ...
+# Usage: tools/reasm.pl [-v] [-t] [-m PART=VOLUME:ZONE ...] parts/NAME[.variant].be ...
 #   -t  translate only (for the listing), no linking;
-#   -v  print the РВС log.
+#   -v  print the РВС log;
+#   -m  link the object module of PART as it lies on VOLUME from ZONE (octal)
+#       instead of translating parts/PART.be (make updcheck: the УПД modules
+#       of 2148); the words that differ are printed.
 # 0. The macro library: macros.be compiled with ЗПКОМП into zones 040-046
 #    of 2222, kept in macros.lib (rebuilt when older than macros.be).
 # 1. Translates each source with БЕМШ (from disk 2048, as re-dispak/asm.pl
@@ -12,7 +15,8 @@
 #    parts.txt); for parts/NAME.be it is kept in parts/NAME.obj. The
 #    listing is left in SOURCE.lst.
 # 2. Unless -t: one РВС run (disk 2248, zones 0105-0106) links all parts of
-#    parts.txt, each a group of its own at its address (НАЗ) into zones
+#    parts.txt, each a group of its own at its address (НАЗ) - the pieces
+#    БАЗА:КОНЕЦ of one БАЗА one group, module after module - into zones
 #    0400+010*i of 2222 (ЗОНГП); the object modules come from parts/*.obj
 #    (translated first when missing or older than parts/NAME.be), so the
 #    ВНЕШ/ВХОД links between the parts are resolved.
@@ -26,6 +30,10 @@ $verbose = $tonly = 0;
 while (@ARGV && $ARGV[0] =~ /^-/) {
     my $o = shift @ARGV;
     if ($o eq '-v') { $verbose = 1 } elsif ($o eq '-t') { $tonly = 1 }
+    elsif ($o eq '-m') {            # -m PART=VOLUME:ZONE - the original module
+        my ($p, $v, $z) = shift(@ARGV) =~ /^(\w+)=(\d+):([0-7]+)$/ or die "-m PART=VOLUME:ZONE\n";
+        $orig{$p} = [$v, $z];
+    }
     else { die "Unknown option $o\n" }
 }
 die "Usage: reasm.pl [-v] [-t] parts/NAME.be ...\n" unless @ARGV || !$tonly;
@@ -35,8 +43,20 @@ $i = 0;
 while (<P>) {
     next if /^#/ || !/\S/;
     my ($n, $m, $a, @z) = split;
+    # БАЗА:КОНЕЦ - a piece of the zones loaded at БАЗА: the pieces with
+    # one БАЗА are linked as one group (the first one leads it)
+    my ($pc) = grep /:/, @z;
+    @z = grep !/:/, @z;
     push @parts, $n;
     $pnaz{$n} = $a; $pnz{$n} = @z; $pidx{$n} = $i++; $pmod{$n} = $m;
+    if (defined $pc) {
+        my ($b, $e) = split /:/, $pc;
+        $plast{$n} = $e; $pbase{$n} = $b;
+        $lead{$b} = $n unless defined $lead{$b};
+        $plead{$n} = $lead{$b};
+    } else {
+        $plead{$n} = $n;
+    }
 }
 close(P);
 sub objzone { sprintf('%04o', 0100 + 010 * $pidx{$_[0]}) }
@@ -118,12 +138,20 @@ exit 0 if $tonly;
 
 # Link job: the loader stub from re-dispak/rvs.pl, all parts at once
 for $p (@parts) {
-    translate("parts/$p.be", $p)
-        if !-e "parts/$p.obj" || -M "parts/$p.obj" > -M "parts/$p.be";
-    system("besmtool write 2222 --start=" . objzone($p) .
-           " --from-file=parts/$p.obj > /dev/null");
+    if ($orig{$p}) {                # the module as it lies on the volume
+        my ($v, $z) = @{$orig{$p}};
+        system("besmtool dump $v --start=0$z --length=2 --to-file=parts/$p.orig.obj > /dev/null");
+        die "$p: no module on $v from zone $z\n" unless -s "parts/$p.orig.obj";
+        system("besmtool write 2222 --start=" . objzone($p) .
+               " --from-file=parts/$p.orig.obj > /dev/null");
+    } else {
+        translate("parts/$p.be", $p)
+            if !-e "parts/$p.obj" || -M "parts/$p.obj" > -M "parts/$p.be";
+        system("besmtool write 2222 --start=" . objzone($p) .
+               " --from-file=parts/$p.obj > /dev/null");
+    }
     system("besmtool zero 2222 --start=" . imgzone($p) .
-           " --length=$pnz{$p} > /dev/null");
+           " --length=$pnz{$p} > /dev/null") if $plead{$p} eq $p;
 }
 open(B, '>parts/link.rvs.b6') || die;
 print B qq/шифр 419999^
@@ -142,9 +170,14 @@ print B qq/шифр 419999^
 а1
 /;
 for $p (@parts) {
+    # the next module of a group goes right after the previous one
+    if ($plead{$p} ne $p) {
+        printf B "мдл   %-6s43%s^\n", $pmod{$p}, objzone($p);
+        next;
+    }
     # an image loaded at 0 is disassembled from word 1 (word 0 must be zero)
     printf B "мдл   %-6s43%s^\nназ   %06o^\nзонгп 43%s     %d^\n",
-        $pmod{$p}, objzone($p), oct($pnaz{$p}) || 1, imgzone($p), $pnz{$p};
+        $pmod{$p}, objzone($p), oct($pbase{$p} // $pnaz{$p}) || 1, imgzone($p), $pnz{$p};
 }
 print B "конец ^\n_\$\nеконец\n";
 close(B);
@@ -155,8 +188,14 @@ print grep(/ОШИБ|НЕТ |КОНФУС/, split /^/, $log);
 $bad = 0;
 for $p (@parts) {
     my ($orig, $new) = ("parts/$p.bin", "parts/$p.new");
-    system("besmtool dump 2222 --start=" . imgzone($p) .
+    system("besmtool dump 2222 --start=" . imgzone($plead{$p}) .
            " --length=$pnz{$p} --to-file=$new > /dev/null");
+    if (defined $pbase{$p}) {       # the piece of the group's image
+        open(N, '<:raw', $new) || die; local $/; my $img = <N>; close(N);
+        my $from = (oct($pnaz{$p}) - oct($pbase{$p})) * 6;
+        my $len = (oct($plast{$p}) - oct($pnaz{$p}) + 1) * 6;
+        open(N, '>:raw', $new) || die; print N substr($img, $from, $len); close(N);
+    }
     my $diff = `cmp -l $orig $new | wc -l`;
     chop $diff;
     if ($diff == 0) {
@@ -164,8 +203,20 @@ for $p (@parts) {
     } else {
         my ($byte) = `cmp $orig $new` =~ /byte (\d+)/;
         printf("\033[1;31m$new differs from $orig in $diff bytes, first at word %05o\033[22;39m\n",
-            ((oct($pnaz{$p}) || 1) & ~01777) + int(($byte - 1) / 6));
+            (defined $pbase{$p} ? oct($pnaz{$p}) : (oct($pnaz{$p}) || 1) & ~01777) + int(($byte - 1) / 6));
         $bad = 1;
+        # with original modules: the differing words
+        if (%orig) {
+            open(O, '<:raw', $orig) || die; local $/; my $o = <O>; close(O);
+            open(N, '<:raw', $new) || die; my $n = <N>; close(N);
+            my $a0 = defined $pbase{$p} ? oct($pnaz{$p}) : (oct($pnaz{$p}) || 1) & ~01777;
+            for (my $i = 0; $i < length($o); $i += 6) {
+                next if substr($o, $i, 6) eq substr($n, $i, 6);
+                printf("    %05o  было %s  стало %s\n", $a0 + $i / 6,
+                       join('', map { sprintf '%016o', $_ } unpack('Q>', "\0\0" . substr($o, $i, 6))),
+                       join('', map { sprintf '%016o', $_ } unpack('Q>', "\0\0" . substr($n, $i, 6))));
+            }
+        }
     }
 }
 exit $bad;

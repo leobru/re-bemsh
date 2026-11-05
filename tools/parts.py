@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Build the parts listed in parts.txt: parts/NAME.bin (zones concatenated),
+# Build the parts listed in parts.txt: parts/NAME.bin (zones concatenated,
+# or a piece of them: БАЗА:КОНЕЦ),
 # parts/NAME.cov (union of traces/*.cov/ZZZZ.cov and traces/*/*.cov/ZZZZ.cov for its zones) and
 # parts/NAME.dis (raw disbesm6 -s output, module name from parts.txt).
 # Usage: tools/parts.py [name ...]     (default: all)
@@ -62,13 +63,21 @@ for l in open('parts.txt'):
     name, mod, addr, *zones = l.split()
     if len(sys.argv) > 1 and name not in sys.argv[1:]:
         continue
+    # БАЗА:КОНЕЦ - a piece of the image of the zones loaded at БАЗА
+    piece = [z for z in zones if ':' in z]
+    zones = [z for z in zones if ':' not in z]
+    img = b''.join(open('zones/%s.bin' % z, 'rb').read() for z in zones)
+    lo, hi = int(addr, 8), int(addr, 8) + len(img) // 6 - 1
+    if piece:
+        base, hi = [int(x, 8) for x in piece[0].split(':')]
+        img = img[(lo - base) * 6:(hi + 1 - base) * 6]
     with open('parts/%s.bin' % name, 'wb') as f:
-        for z in zones:
-            f.write(open('zones/%s.bin' % z, 'rb').read())
+        f.write(img)
     cov = set()
     for z in zones:
         for c in glob.glob('traces/*.cov/%s.cov' % z) + glob.glob('traces/*/*.cov/%s.cov' % z):
-            cov.update(x.split(':')[0] for x in open(c))
+            cov.update(x.split(':')[0] for x in open(c)
+                       if lo <= int(x.split(':')[0], 8) <= hi)
     with open('parts/%s.cov' % name, 'w') as f:
         f.writelines('%s: L\n' % a for a in sorted(cov))
     entry = min(cov) if cov else addr

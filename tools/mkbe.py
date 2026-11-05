@@ -45,7 +45,19 @@
 #   TOP    = '''* ...'''                block comment after the СТАРТ lines;
 #   BLOCK  = {'77316': '''* ...'''}     block comments before an address;
 #   INLINE = {'77316': '...'}           end-of-line comments (after a comma
-#            when the operand is empty).
+#            when the operand is empty);
+#   EXTNOMOD = True                     externals without the module name
+#            (ВНЕШН .ИМЯ: РВС looks in all modules), as in the УПД modules;
+#   EXTERN = {'26233п': 'АОБЛСВ'}       the operand is an external of no
+#            part (РВС leaves it unresolved and puts 2, as in the image);
+#   ACONST = ['05223']                  a word that is the address of an
+#            entry of a part of USES: КОНД А(ИМЯ), the name external;
+#   ALIASES = {'25544': ['ТОМ002']}     more entry names of an address (ЭКВ);
+#   ENDENTRY = 'КОНСТ'                  an entry at the address after the
+#            last word (ЭКВ *);
+#   EXPORTS = ['25016', ...]            addresses listed in ВХОД whether
+#            other parts refer to them or not (entries of a historic
+#            module); their names are in NAMES (may contain @: ОТКР@).
 import importlib.util, os, re, subprocess, sys
 
 
@@ -247,7 +259,10 @@ def ext_map(part):
     res = {}
     uses = load_notes(part).get('USES', [])
     notaddr = {int(a, 8) for a in load_notes(part).get('NOTADDR', [])}
-    for l in open('parts/%s.dis' % part, encoding='utf-8'):
+    img = open('parts/%s.bin' % part, 'rb').read()
+    acon = ["'%05o'" % (int.from_bytes(img[(int(x, 8) - lo) * 6:(int(x, 8) - lo) * 6 + 6], 'big') & 0o77777)
+            for x in load_notes(part).get('ACONST', [])]
+    for l in [l for l in open('parts/%s.dis' % part, encoding='utf-8')] + ['\t\t%s' % x for x in acon]:
         f = l.rstrip('\n').split('\t')
         if len(f) < 3:
             continue
@@ -278,7 +293,7 @@ def ext_map(part):
     for t in load_notes(part).get('SRC', {}).values():
         if t[0] == 'drop' or t[-2] is None:
             continue
-        for x in re.findall(r"(?<![А-ЯA-Z0-9'])[А-ЯA-Z][А-ЯA-Z0-9]*", re.sub(r"'[^']*'", '', t[-2])):
+        for x in re.findall(r"(?<![А-ЯA-Z0-9@'])[А-ЯA-Z][А-ЯA-Z0-9@]*", re.sub(r"'[^']*'", '', t[-2])):
             if x in inv and inv[x][0] not in out:
                 out[inv[x][0]] = (x, inv[x][1])
     return out
@@ -309,13 +324,15 @@ def make(name):
     notes = load_notes(name)
     names = notes.get('NAMES', {})
     bad = [n for n in names.values()
-           if not re.fullmatch(r'[А-ЯA-Z][А-ЯA-Z0-9]{0,5}', n)]
+           if not re.fullmatch(r'[А-ЯA-Z][А-ЯA-Z0-9@]{0,5}', n)]
     if bad:
         sys.exit('%s: bad label names: %s' % (name, ' '.join(bad)))
     owner = ext_map(name)
     ext = {a: n for a, (n, u) in owner.items()}
     mods = modules()
     expo = exports(name)
+    # EXPORTS: entries of the historic module, called from outside or not
+    expo.update({a: names[a] for a in notes.get('EXPORTS', [])})
     # an exported address without a name of its own gets its label name
     # (an unlabelled word gets the label, a word inside ПАМ - an ЭКВ)
     names = dict(names)
@@ -648,6 +665,7 @@ def make(name):
                 for a, n in inside:
                     del ekv_own['%05o' % a]
     used_ext = {}
+    noown = set()                   # externals of no part (EXTERN)
 
     def final(a):                   # the label of an address of this part
         return names.get(a) or lab.get(a) or mods[name]
@@ -679,7 +697,7 @@ def make(name):
                 or f[1].startswith('*'):
             return False
         opnd = f[2].split(',')[0]   # after a comma - a comment
-        syms = set(re.findall(r"(?<![А-ЯA-Z0-9'])[А-ЯA-Z][А-ЯA-Z0-9]*", opnd))
+        syms = set(re.findall(r"(?<![А-ЯA-Z0-9@'])[А-ЯA-Z][А-ЯA-Z0-9@]*", opnd))
         syms = {x for x in syms if not re.fullmatch(r'М\d+', x)}
         return bool(syms - set(ext.values())) or opnd.startswith('=')
 
@@ -881,6 +899,19 @@ def make(name):
         if using and i not in based and direct(l):
             out.append('\tотмен\t(%s)' % using[0])
             using = None
+        if first and a in notes.get('EXTERN', {}):
+            # an external of no part (unresolved by РВС: it gets 2), in
+            # place of the operand: СЧ 2 -> СЧ АОБЛСВ
+            f = l.split('\t')
+            m = re.fullmatch(r"[^(,]*(\(М\d+\))?(.*)", f[2])
+            f[2] = notes['EXTERN'][a] + (m.group(1) or '') + m.group(2)
+            noown.add(notes['EXTERN'][a])
+            l = '\t'.join(f)
+        if first and a in notes.get('ACONST', []):
+            # a word that is the address of an entry of another part
+            v = '%05o' % (int.from_bytes(image[(int(a, 8) - plo) * 6:(int(a, 8) - plo) * 6 + 6], 'big') & 0o77777)
+            used_ext[v] = ext[v]
+            l = '%s\tконд\tА(%s)' % (l.split('\t')[0], ext[v])
         if first and a in notes.get('INLINE', {}):
             f = l.split('\t')
             if len(f) >= 3 and f[2]:
@@ -899,7 +930,7 @@ def make(name):
             else:
                 f = f[:3] if len(f) > 2 and not f[2].startswith(',') else f[:2] + ['']
             cm = st[-1] or (l.split('\t')[3] if len(l.split('\t')) > 3 and st[0] == 'line' else '')
-            for x in re.findall(r"(?<![А-ЯA-Z0-9'])[А-ЯA-Z][А-ЯA-Z0-9]*", re.sub(r"'[^']*'", '', f[2])):
+            for x in re.findall(r"(?<![А-ЯA-Z0-9@'])[А-ЯA-Z][А-ЯA-Z0-9@]*", re.sub(r"'[^']*'", '', f[2])):
                 if x in extinv:
                     used_ext[extinv[x]] = x
             l = '\t'.join(f) + (('\t' if f[2] else ',') + cm if cm else '')
@@ -924,12 +955,29 @@ def make(name):
     imp = {}                        # owner -> names
     for a2 in used_ext:
         imp.setdefault(owner[a2][1], set()).add(used_ext[a2])
+    # EXTNOMOD: externals without the module name (ВНЕШН .ИМЯ), as in the
+    # historic modules: РВС looks for them in all modules
+    if notes.get('EXTNOMOD'):
+        imp = {'': set().union(noown, *imp.values())} if imp or noown else {}
+    elif noown:
+        imp[''] = set(noown)
     for u in sorted(imp):
         for c in chunks(sorted(imp[u])):
-            head.append('%s\tвнеш\t%s' % (mods[u], ','.join(c)))
-    for c in chunks(sorted(set(expo.values()))):
+            head.append('%s\tвнеш\t%s' % (mods.get(u, ''), ','.join(c)))
+    # ALIASES: more entry names of an address; ENDENTRY: an entry at the
+    # address after the last word of the part
+    aliases = notes.get('ALIASES', {})
+    endent = notes.get('ENDENTRY')
+    ents = set(expo.values()) | {n for v in aliases.values() for n in v} | ({endent} if endent else set())
+    for c in chunks(sorted(ents)):
         head.append('\tвход\t' + ','.join(c))
     out[2:2] = head
+    tail = ['%s\tэкв\t%s' % (n, final(a2)) for a2, v in sorted(aliases.items()) for n in v]
+    if endent:
+        tail.append('%s\tэкв\t*' % endent)
+    if tail:
+        k = max(i for i, l in enumerate(out) if l.startswith('\tФИНИШ'))
+        out[k:k] = tail
     # consecutive whole words of text are one ТЕКСТ (up to 6 words in a line)
     def whole(l):
         m = re.fullmatch(r"(\S*)\tконд\t([пт])'(.*)'", l)

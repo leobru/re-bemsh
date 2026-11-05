@@ -2,10 +2,11 @@
 # Put the text of an original source fragment into the restored parts:
 # for the instructions aligned by tools/srcmatch.py (same operation
 # sequence) the operand and the comment of the source line replace the
-# disassembled ones, the known macros (ПРСЛ, ХЭШ, ОБМЕН, ПОСР) replace
+# disassembled ones, the known macros (ПРСЛ, ХЭШ, ОБМЕН, ПОСР, ДС, НЗП,
+# ПРОД, ЗБП, ОПЦ, ПРНЕОБ - macros.be) replace
 # their expansions. Writes notes/src/PART.py (SRC, SRCREG, NAMES) that
 # tools/mkbe.py applies; lines listed in notes/src/PART.skip (addresses,
-# one per line) are left as disassembled - put there what does not
+# one per line, # starts a comment) are left as disassembled - put there what does not
 # reassemble to the same bytes.
 # Usage: tools/srcapply.py SOURCE.txt part [part ...]
 import re, sys, os, collections
@@ -19,7 +20,23 @@ MACROS = {
     'хэш': lambda o: [('сч', 'Т'), ('сда', '64+6'), ('нтж', 'Т'), ('и', "=В'77'"), ('уи', o)],
     'обмен': lambda o: [('э70', o)],
     'поср': lambda o: [('пв', 'ПОСР(ВПОСР)')],
+    'дс': lambda o: [('пв', 'ДС(ВДС)')],
+    'нзп': lambda o: [('пв', 'НЗП(ВНЗП)')],
+    'прод': lambda o: [('пв', 'ПРОДОЛ(ВПРОД)')],
+    'збп': lambda o: ([('сч', o)] if o else []) + [('пв', 'ЗБП(ВЗБП)')],
+    'опц': lambda o: opc(o.split(',')),
+    'прнеоб': lambda o: [('сч', 'ИК-1'), ('или', "=М39В'1'"), ('зп', 'ИК-1'),
+                         ('уиа', 'ПИФ(АПАР)'), ('пв', 'ПИШЗАП(ИВОЗВ)')],
 }
+
+
+def opc(a):
+    """ОПЦ КОД[,КУДА][,МНЕМ=ОП] (macros.be)."""
+    kw = [x[5:] for x in a if x.startswith('МНЕМ=')]
+    a = [x for x in a if not x.startswith('МНЕМ=')]
+    if kw:
+        return [(kw[0].lower(), a[0])]
+    return [('сч', a[0])] + ([('зп', a[1])] if len(a) > 1 and a[1] else [])
 
 
 def value(o, known):
@@ -74,7 +91,13 @@ def main():
     vs = virtual(src)
     known = srcmatch.allnames()
     os.makedirs('notes/src', exist_ok=True)
+    allknown = known
     for p in sys.argv[2:]:
+        # this part's own names first: the same name may mean another
+        # address in another part (ТНАЧ in asmc and mon70)
+        own = {}
+        exec(open('notes/%s.py' % p, encoding='utf-8').read(), own)
+        known = dict(allknown, **{n: a for a, n in own.get('NAMES', {}).items()})
         code = srcmatch.part(p)
         ops = [c[1] for c in code]
         pair = {}                   # index in vs -> index in code
@@ -107,7 +130,7 @@ def main():
         num = lambda m: int(m[1:], 8)       # М16 -> 14
         skip = set()
         if os.path.exists('notes/src/%s.skip' % p):
-            skip = set(open('notes/src/%s.skip' % p).read().split())
+            skip = set(w for l in open('notes/src/%s.skip' % p) for w in l.split('#')[0].split())
         used = {}                   # a part address is taken by one source line
         SRC = {}; NAMES = {}; usedreg = {}
         # whole source lines only: every instruction of the line is paired,
@@ -123,6 +146,26 @@ def main():
             addrs = [code[c][0] for _, c in lst]
             if any(a in used or a in skip for a in addrs):
                 continue
+            if op in ('опц', 'збп') and opnd:
+                # the operand is a code name or a literal of the source: the
+                # call gets the pool cell of the part, the source text goes
+                # to the comment; an address operand (КУДА) must agree
+                pc = [code[c][2] for _, c in lst]
+                a_ = [x for x in opnd.split(',') if not x.startswith('МНЕМ=')]
+                kw = [x for x in opnd.split(',') if x.startswith('МНЕМ=')]
+                if len(a_) > 1 and a_[1] and value(a_[1], known) != value(pc[1], known):
+                    continue
+                call = pc[0] + (',' + pc[1] if len(pc) > 1 and op == 'опц' else '') + \
+                    (',' + kw[0] if kw else '')
+                SRC[addrs[0]] = ('macro', op.upper(), call, (opnd + '  ' + cmt).strip())
+                for a in addrs[1:]:
+                    SRC[a] = ('drop',)
+                for a in addrs:
+                    used[a] = li
+                if lab and re.fullmatch(r'[А-ЯA-Z][А-ЯA-Z0-9]{0,5}', lab) and \
+                        re.fullmatch(r'[0-7]{5}', addrs[0]) and lab not in known:
+                    NAMES[addrs[0]] = lab
+                continue
             ok = True; rr = {}
             for v, c in lst:
                 sr, pr = sreg(vs[v][4]), reg(code[c][2])
@@ -131,6 +174,10 @@ def main():
                     a1, a2 = value(vs[v][4], known), value(code[c][2], known)
                     if a1 is None or a2 is None or a1 != a2:
                         ok = False
+                # register operations: a number in the source is the register
+                if vs[v][3] in ('уи', 'счи', 'уии', 'сли', 'уим', 'счим') and \
+                        vs[v][4].isdigit() and code[c][2] != 'М%o' % int(vs[v][4]):
+                    ok = False
                 if (sr is None) != (pr is None):
                     ok = False
                 elif sr and sr.lstrip('-').isdigit():
@@ -152,8 +199,8 @@ def main():
                     ok = False
             if not ok:
                 continue
-            if lit and op in MACROS:
-                continue
+            if lit and op in MACROS or op == 'прнеоб':
+                continue            # ПРНЕОБ: the constant cell - tools/macapply.py
             if lit and n == 1:
                 # keep the operand of the part, the literal goes to the comment
                 text = (None, (opnd + '  ' + cmt).strip())
@@ -184,6 +231,8 @@ def main():
         print(p, ': lines', sum(1 for t in SRC.values() if t[0] == 'line'),
               'macros', sum(1 for t in SRC.values() if t[0] == 'macro'),
               'names', len(NAMES), 'registers', len(usedreg))
+    # the parts again, with the text applied
+    subprocess.run(['tools/mkbe.py'] + sys.argv[2:], stdout=subprocess.DEVNULL, check=True)
 
 
 if __name__ == '__main__':

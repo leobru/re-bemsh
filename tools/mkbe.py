@@ -64,6 +64,22 @@ def load_notes(name):
         exec(open(fn, encoding='utf-8').read(), ns)
         res.update({k: ns[k] for k in ('SRC', 'SRCREG', 'SRCNAMES')})
         res['NAMES'] = dict(ns['SRCNAMES'], **res.get('NAMES', {}))
+    # macro calls in place of their expansions (tools/macapply.py): a
+    # call is skipped if the source text (SRC) covers one of its lines
+    fn = 'notes/mac/%s.py' % name
+    if os.path.exists(fn) and not os.environ.get('NOSRC'):
+        ns = {}
+        exec(open(fn, encoding='utf-8').read(), ns)
+        src = dict(res.get('SRC', {}))
+        grp = []
+        for a, t in sorted(ns['MAC'].items()) + [(None, ('macro',))]:
+            if t[0] == 'macro' and grp:
+                if not any(a2 in src for a2, _ in grp):
+                    src.update(grp)
+                grp = []
+            if a:
+                grp.append((a, t))
+        res['SRC'] = src
     return res
 
 
@@ -978,7 +994,7 @@ def make(name):
         else:
             rep.append(l)
     out = rep
-    text = '\n'.join(out)
+    text = '\n'.join(l.rstrip(' \t') for l in '\n'.join(out).split('\n'))
     open('parts/%s.be' % name, 'w', encoding='utf-8').write(text)
     insplit = {'%05o' % x for v in split.values() for x, n in v}
     for k in list(notes.get('BLOCK', {})) + list(notes.get('INLINE', {})) + list(newlab):

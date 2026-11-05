@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # Print a file of text in the 8-bit БЕМШ code (as kept in the АРАП text
-# archive): 0276 ends a line, unknown bytes are shown as <ooo>.
+# archive): 0276 ends a line, unknown bytes are shown as <ooo>. A zone
+# (6144 bytes) always starts a new line; 0277 (shown as _) ends the text of
+# the zone, after it come stale text and the zone trailer, also printed.
 # Usage: tools/t8text.py FILE [> text]
 import sys
 sys.path.insert(0, 'tools')
@@ -8,8 +10,12 @@ from mkbe import T8
 
 d = open(sys.argv[1], 'rb').read()
 out = []
-for b in d:
-    if b == 0o276:
+for i, b in enumerate(d):
+    if i and i % 6144 == 0 and out and out[-1] != '\n':
+        out.append('\n')
+    if b == 0o277:
+        out.append('_\n')
+    elif b == 0o276:
         out.append('\n')
     elif b in T8:
         out.append(T8[b].replace("''", "'"))

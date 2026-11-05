@@ -151,5 +151,19 @@ def main():
             print('B %s %s' % (a, '|'.join(c)))
 
 
+def plain(parts, on=True):
+    """Rebuild parts/PART.be without the layers notes/src and notes/mac
+    (on=True) or with them again (on=False): matching needs the plain
+    disassembly, not macro calls."""
+    import os, subprocess
+    env = dict(os.environ, NOSRC='1') if on else os.environ
+    subprocess.run(['tools/mkbe.py'] + list(parts), env=env,
+                   stdout=subprocess.DEVNULL, check=True)
+
+
 if __name__ == '__main__':
-    main()
+    plain(sys.argv[2:])
+    try:
+        main()
+    finally:
+        plain(sys.argv[2:], False)

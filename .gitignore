@@ -21,4 +21,6 @@ macros.be.lst
 parts/*.sym
 source.txt
 source.utf8
+fmtsrc.txt
+fmtsrc.utf8
 tools/__pycache__/

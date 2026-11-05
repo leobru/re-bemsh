@@ -52,12 +52,24 @@ be:
 
 # Текст фрагмента исходника (source.txt: диск 2053, зоны 0650-0653, код
 # БЕМШ) в notes/src/*.py:
-# операнды, макровызовы и комментарии для совпавших строк mred74 и mred2
+# операнды, макровызовы и комментарии для совпавших строк mred74 и mred2;
+# из fmtsrc.utf8 (зоны 0655-0657) - то же для mon70; затем макровызовы
+# macros.be на месте развёрток в остальном коде (notes/mac/*.py)
 source.txt:
 	besmtool dump 2053 --start=0650 --length=4 --to-file=$@ > /dev/null
-src: source.txt
+src: source.txt fmtsrc.utf8
 	tools/t8text.py source.txt > source.utf8
 	tools/srcapply.py source.utf8 mred74 mred2
+	tools/srcapply.py fmtsrc.utf8 mon70
+	tools/macapply.py mred74 mred2 mmash
+
+# Продолжение на диске 2053: зона 0654 - не текст, 0655-0657 - исходник
+# таблицы литер и печати по формату (mon70 070146-071073, старая версия);
+# сравнение с образом: tools/srcdiff.py fmtsrc.utf8 mon70 РЕД
+fmtsrc.txt:
+	besmtool dump 2053 --start=0655 --length=3 --to-file=$@ > /dev/null
+fmtsrc.utf8: fmtsrc.txt
+	tools/t8text.py $< > $@
 
 # Покрытие кода частей всеми заданиями (трассы обновляются по надобности)
 cover: traces

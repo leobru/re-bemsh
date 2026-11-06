@@ -27,7 +27,7 @@ def halves(word):
 
 def module_words(path):
     out = subprocess.run([DIS, '-r', path], capture_output=True, text=True).stdout
-    ents = ['-e' + m.group(1) for m in re.finditer(r'^([0-7]{5}) 7[0-7]{6}00420013\t\S', out, re.M)]
+    ents = ['-e' + m.group(1) for m in re.finditer(r'^([0-7]{5}) 7[0-7]{7}00420013\t', out, re.M)]
     out = subprocess.run([DIS, '-r'] + ents + [path], capture_output=True, text=True).stdout
     w, names, cur, hw = {}, {}, None, []
     for l in out.split('\n'):
@@ -38,7 +38,7 @@ def module_words(path):
             if m.group(3):
                 names[cur] = m.group(3)
             continue
-        m = re.match(r'^([0-7]{5})?[ :]?\s*([0-7]{2}) ([0-7]{2,3}) +([0-7]{4,5})\t(\S*)', l)
+        m = re.match(r'^([0-7]{5})?[ :]?\s*([0-7]{2}) ([0-7]{2,3}) +([0-7]{4,5}) ?\t(\S*)', l)
         if not m:
             continue
         if m.group(1):

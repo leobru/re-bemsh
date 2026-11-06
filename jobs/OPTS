@@ -114,3 +114,4 @@ arap/long-zps: -r -w jobs/arap/long-zps.deck
 arap/zonmet: -r -w jobs/arap/zonmet.deck
 zgrexp: -l -c "НАЗ   000100,ЗОНГП 430010     1"
 zgrdiv: -l -c "НАЗ   000100,ЗОНГП 430010     1"
+kod: -k -l -z
